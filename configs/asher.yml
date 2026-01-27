@@ -1,0 +1,255 @@
+schools:
+  - id: school_asher
+    slug: asher-college
+    name: Asher College
+    branding:
+      logoUrl: "/logos/asher.png"
+      colors:
+        primary: "#0B3A53"
+        secondary: "#E0542F"
+        accent: "#F2C14E"
+        background: "#F7F5F0"
+        text: "#1B1B1B"
+    compliance:
+      disclaimerText: "By submitting this form, you are giving your express written consent for Asher College to contact you regarding our programs and services using email, telephone or text - including our use of automated technology for calls and periodic texts to any wireless number you provide. Message and data rates may apply. This consent is not required to enroll. You may always call us directly at Sacramento - (916) 900-2850, Las Vegas - (702) 323-0853 or Dallas - (972) 600-2818."
+      version: "2026-01"
+    crmConnectionId: crm_webhook_asher
+
+campuses:
+  - id: campus_asher_dallas
+    schoolId: school_asher
+    slug: dallas
+    name: Dallas Campus
+    routingTags: ['DAL']
+  - id: campus_asher_las_vegas
+    schoolId: school_asher
+    slug: las-vegas
+    name: Las Vegas Campus
+    routingTags: ['LV']
+  - id: campus_asher_sacramento
+    schoolId: school_asher
+    slug: sacramento
+    name: Sacramento Campus
+    routingTags: ['SAC']
+
+programs:
+  - id: program_business_administration_degree
+    schoolId: school_asher
+    slug: business-administration-degree
+    name: Business Administration Degree
+    landingCopy:
+      headline: "Earn a Business Administration degree"
+      subheadline: "Business fundamentals with hands-on projects."
+      body: "Learn management, operations, and leadership skills for business careers."
+      ctaText: "Get Business Program Info"
+  - id: program_office_accounting
+    schoolId: school_asher
+    slug: office-accounting
+    name: Office Accounting
+    landingCopy:
+      headline: "Train for office accounting roles"
+      subheadline: "Build practical accounting and bookkeeping skills."
+      body: "Prepare for roles supporting finance and office operations."
+      ctaText: "Get Accounting Program Info"
+  - id: program_cloud_computer_security_specialist
+    schoolId: school_asher
+    slug: cloud-computer-security-specialist
+    name: Cloud and Computer Security Specialist
+    landingCopy:
+      headline: "Launch a career in cloud and computer security"
+      subheadline: "Hands-on labs in security tools and practices."
+      body: "Build skills in cloud systems, risk mitigation, and defense."
+      ctaText: "Get Security Program Info"
+  - id: program_computer_network_technician
+    schoolId: school_asher
+    slug: computer-network-technician
+    name: Computer and Network Technician
+    landingCopy:
+      headline: "Become a computer and network technician"
+      subheadline: "Learn hardware, networking, and troubleshooting."
+      body: "Prepare for entry-level IT support and technician roles."
+      ctaText: "Get IT Program Info"
+  - id: program_computer_operations_security_specialist
+    schoolId: school_asher
+    slug: computer-operations-security-specialist
+    name: Computer Operations and Security Specialist
+    landingCopy:
+      headline: "Train for computer operations and security"
+      subheadline: "Operations-focused IT training with security fundamentals."
+      body: "Develop skills in systems operations, monitoring, and security basics."
+      ctaText: "Get IT Program Info"
+  - id: program_network_computer_systems_administration
+    schoolId: school_asher
+    slug: network-computer-systems-administration
+    name: Network and Computer Systems Administration
+    landingCopy:
+      headline: "Learn network and systems administration"
+      subheadline: "Configure, manage, and secure networks."
+      body: "Prepare for roles in network administration and systems support."
+      ctaText: "Get Systems Admin Info"
+  - id: program_pc_support_specialist
+    schoolId: school_asher
+    slug: pc-support-specialist
+    name: PC Support Specialist
+    landingCopy:
+      headline: "Start a career in PC support"
+      subheadline: "Hands-on training in help desk and troubleshooting."
+      body: "Build practical skills for desktop support and user assistance."
+      ctaText: "Get Support Program Info"
+  - id: program_health_information_specialist_degree
+    schoolId: school_asher
+    slug: health-information-specialist-degree
+    name: Health Information Specialist Degree
+    landingCopy:
+      headline: "Earn a Health Information Specialist degree"
+      subheadline: "Healthcare data, records, and compliance training."
+      body: "Prepare for roles in medical records and health information management."
+      ctaText: "Get Health Info Program Details"
+  - id: program_medical_billing_coding
+    schoolId: school_asher
+    slug: medical-billing-coding
+    name: Medical Billing and Coding
+    landingCopy:
+      headline: "Train for medical billing and coding"
+      subheadline: "Learn coding systems and billing workflows."
+      body: "Develop skills for healthcare billing, claims, and coding roles."
+      ctaText: "Get Billing & Coding Info"
+  - id: program_pharmacy_technician
+    schoolId: school_asher
+    slug: pharmacy-technician
+    name: Pharmacy Technician
+    landingCopy:
+      headline: "Become a pharmacy technician"
+      subheadline: "Hands-on training for pharmacy support roles."
+      body: "Prepare to assist pharmacists with prescriptions and patient care."
+      ctaText: "Get Pharmacy Tech Info"
+
+landingPages:
+  - id: lp_dallas_business_administration_degree
+    schoolId: school_asher
+    campusId: campus_asher_dallas
+    programId: program_business_administration_degree
+  - id: lp_dallas_office_accounting
+    schoolId: school_asher
+    campusId: campus_asher_dallas
+    programId: program_office_accounting
+  - id: lp_dallas_cloud_computer_security_specialist
+    schoolId: school_asher
+    campusId: campus_asher_dallas
+    programId: program_cloud_computer_security_specialist
+  - id: lp_dallas_computer_network_technician
+    schoolId: school_asher
+    campusId: campus_asher_dallas
+    programId: program_computer_network_technician
+  - id: lp_dallas_computer_operations_security_specialist
+    schoolId: school_asher
+    campusId: campus_asher_dallas
+    programId: program_computer_operations_security_specialist
+  - id: lp_dallas_network_computer_systems_administration
+    schoolId: school_asher
+    campusId: campus_asher_dallas
+    programId: program_network_computer_systems_administration
+  - id: lp_dallas_pc_support_specialist
+    schoolId: school_asher
+    campusId: campus_asher_dallas
+    programId: program_pc_support_specialist
+  - id: lp_dallas_health_information_specialist_degree
+    schoolId: school_asher
+    campusId: campus_asher_dallas
+    programId: program_health_information_specialist_degree
+  - id: lp_dallas_medical_billing_coding
+    schoolId: school_asher
+    campusId: campus_asher_dallas
+    programId: program_medical_billing_coding
+  - id: lp_dallas_pharmacy_technician
+    schoolId: school_asher
+    campusId: campus_asher_dallas
+    programId: program_pharmacy_technician
+  - id: lp_las_vegas_business_administration_degree
+    schoolId: school_asher
+    campusId: campus_asher_las_vegas
+    programId: program_business_administration_degree
+  - id: lp_las_vegas_office_accounting
+    schoolId: school_asher
+    campusId: campus_asher_las_vegas
+    programId: program_office_accounting
+  - id: lp_las_vegas_cloud_computer_security_specialist
+    schoolId: school_asher
+    campusId: campus_asher_las_vegas
+    programId: program_cloud_computer_security_specialist
+  - id: lp_las_vegas_computer_network_technician
+    schoolId: school_asher
+    campusId: campus_asher_las_vegas
+    programId: program_computer_network_technician
+  - id: lp_las_vegas_computer_operations_security_specialist
+    schoolId: school_asher
+    campusId: campus_asher_las_vegas
+    programId: program_computer_operations_security_specialist
+  - id: lp_las_vegas_network_computer_systems_administration
+    schoolId: school_asher
+    campusId: campus_asher_las_vegas
+    programId: program_network_computer_systems_administration
+  - id: lp_las_vegas_pc_support_specialist
+    schoolId: school_asher
+    campusId: campus_asher_las_vegas
+    programId: program_pc_support_specialist
+  - id: lp_las_vegas_health_information_specialist_degree
+    schoolId: school_asher
+    campusId: campus_asher_las_vegas
+    programId: program_health_information_specialist_degree
+  - id: lp_las_vegas_medical_billing_coding
+    schoolId: school_asher
+    campusId: campus_asher_las_vegas
+    programId: program_medical_billing_coding
+  - id: lp_las_vegas_pharmacy_technician
+    schoolId: school_asher
+    campusId: campus_asher_las_vegas
+    programId: program_pharmacy_technician
+  - id: lp_sacramento_business_administration_degree
+    schoolId: school_asher
+    campusId: campus_asher_sacramento
+    programId: program_business_administration_degree
+  - id: lp_sacramento_office_accounting
+    schoolId: school_asher
+    campusId: campus_asher_sacramento
+    programId: program_office_accounting
+  - id: lp_sacramento_cloud_computer_security_specialist
+    schoolId: school_asher
+    campusId: campus_asher_sacramento
+    programId: program_cloud_computer_security_specialist
+  - id: lp_sacramento_computer_network_technician
+    schoolId: school_asher
+    campusId: campus_asher_sacramento
+    programId: program_computer_network_technician
+  - id: lp_sacramento_computer_operations_security_specialist
+    schoolId: school_asher
+    campusId: campus_asher_sacramento
+    programId: program_computer_operations_security_specialist
+  - id: lp_sacramento_network_computer_systems_administration
+    schoolId: school_asher
+    campusId: campus_asher_sacramento
+    programId: program_network_computer_systems_administration
+  - id: lp_sacramento_pc_support_specialist
+    schoolId: school_asher
+    campusId: campus_asher_sacramento
+    programId: program_pc_support_specialist
+  - id: lp_sacramento_health_information_specialist_degree
+    schoolId: school_asher
+    campusId: campus_asher_sacramento
+    programId: program_health_information_specialist_degree
+  - id: lp_sacramento_medical_billing_coding
+    schoolId: school_asher
+    campusId: campus_asher_sacramento
+    programId: program_medical_billing_coding
+  - id: lp_sacramento_pharmacy_technician
+    schoolId: school_asher
+    campusId: campus_asher_sacramento
+    programId: program_pharmacy_technician
+
+crmConnections:
+  - id: crm_webhook_asher
+    type: webhook
+    config:
+      endpoint: "https://example-crm.invalid/asher-leads"
+      authHeaderName: "X-Api-Key"
+      authHeaderEnv: "CRM_WEBHOOK_TOKEN"
