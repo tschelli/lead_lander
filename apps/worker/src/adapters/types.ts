@@ -1,6 +1,9 @@
 export type DeliveryPayload = {
   submissionId: string;
   idempotencyKey: string;
+  action: "create" | "update";
+  crmLeadId?: string | null;
+  stepIndex?: number | null;
   schoolId: string;
   campusId: string;
   programId: string;
@@ -24,6 +27,7 @@ export type AdapterResult = {
   success: boolean;
   statusCode?: number;
   responseBody?: string;
+  crmLeadId?: string;
   error?: string;
 };
 

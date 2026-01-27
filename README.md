@@ -79,8 +79,8 @@ npm run dev
 ## Submission + delivery flow
 
 1. Visit a landing page URL (example above).
-2. Complete the multi-step form and submit.
-3. API persists the submission and enqueues delivery.
+2. Step 1 submits to `POST /api/lead/start` (creates submission + queues CRM create).
+3. Each subsequent step submits to `POST /api/lead/step` (merges answers + queues CRM update).
 4. Worker delivers to CRM webhook defined in config.
 
 Webhook adapter payload includes:

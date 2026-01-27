@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Question, DEFAULT_QUESTIONS } from "./questions";
+import { Question, QuestionOption, DEFAULT_QUESTIONS } from "./questions";
 
 export type QuestionOverride = {
   id: string;
@@ -19,6 +19,8 @@ type FormEngineProps = {
   consentText: string;
   consentVersion: string;
   questionOverrides?: QuestionOverride[];
+  programOptions?: QuestionOption[];
+  initialAnswers?: Record<string, unknown>;
   apiBaseUrl?: string;
   ctaText?: string;
 };
@@ -36,6 +38,12 @@ const defaultContact: ContactInfo = {
   email: "",
   phone: ""
 };
+
+const INITIAL_QUESTION_ID_SET = new Set([
+  "program_interest",
+  "education_level",
+  "campus_interest"
+]);
 
 function applyOverrides(questions: Question[], overrides?: QuestionOverride[]) {
   if (!overrides || overrides.length === 0) return questions;
@@ -82,37 +90,70 @@ export function FormEngine({
   consentText,
   consentVersion,
   questionOverrides,
+  programOptions,
+  initialAnswers,
   apiBaseUrl,
   ctaText
 }: FormEngineProps) {
   const [currentStep, setCurrentStep] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, unknown>>({});
+  const [answers, setAnswers] = useState<Record<string, unknown>>(initialAnswers || {});
   const [contact, setContact] = useState<ContactInfo>(defaultContact);
   const [consentChecked, setConsentChecked] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [honeypot, setHoneypot] = useState("");
+  const [submissionId, setSubmissionId] = useState<string | null>(null);
 
-  const questions = useMemo(() => applyOverrides(DEFAULT_QUESTIONS, questionOverrides), [questionOverrides]);
+  const mergedOverrides = useMemo(() => {
+    if (!programOptions || programOptions.length === 0) {
+      return questionOverrides;
+    }
+
+    const hasProgramOverride = questionOverrides?.some(
+      (override) => override.id === "program_interest" && override.options?.length
+    );
+
+    if (hasProgramOverride) {
+      return questionOverrides;
+    }
+
+    return [
+      ...(questionOverrides || []),
+      {
+        id: "program_interest",
+        options: programOptions
+      }
+    ];
+  }, [programOptions, questionOverrides]);
+
+  const questions = useMemo(
+    () => applyOverrides(DEFAULT_QUESTIONS, mergedOverrides),
+    [mergedOverrides]
+  );
   const visibleQuestions = useMemo(
     () => questions.filter((question) => isQuestionVisible(question, answers)),
     [questions, answers]
   );
+  const initialQuestions = useMemo(
+    () => visibleQuestions.filter((question) => INITIAL_QUESTION_ID_SET.has(question.id)),
+    [visibleQuestions]
+  );
+  const remainingQuestions = useMemo(
+    () => visibleQuestions.filter((question) => !INITIAL_QUESTION_ID_SET.has(question.id)),
+    [visibleQuestions]
+  );
 
-  const steps = useMemo(() => {
-    return ["consent", ...visibleQuestions.map(() => "question"), "contact"] as const;
-  }, [visibleQuestions]);
-
-  const totalSteps = steps.length;
+  const totalSteps = 1 + remainingQuestions.length;
+  const isStartStep = currentStep === 0;
+  const isLastStep = currentStep === totalSteps - 1;
+  const currentQuestion = !isStartStep ? remainingQuestions[currentStep - 1] : null;
 
   useEffect(() => {
     if (currentStep >= totalSteps) {
       setCurrentStep(Math.max(totalSteps - 1, 0));
     }
   }, [currentStep, totalSteps]);
-
-  const currentQuestion = steps[currentStep] === "question" ? visibleQuestions[currentStep - 1] : null;
 
   const progress = Math.round(((currentStep + 1) / totalSteps) * 100);
 
@@ -128,10 +169,170 @@ export function FormEngine({
     return value === undefined || value === null || value === "";
   };
 
-  const handleNext = () => {
+  const renderQuestion = (question: Question) => {
+    return (
+      <div className="form-question" key={question.id}>
+        <label>{question.label}</label>
+        {question.type === "text" && (
+          <input
+            type="text"
+            value={(answers[question.id] as string) || ""}
+            onChange={(event) => updateAnswer(question.id, event.target.value)}
+          />
+        )}
+        {question.type === "slider" && (
+          <input
+            type="range"
+            min={0}
+            max={10}
+            value={(answers[question.id] as number) || 5}
+            onChange={(event) => updateAnswer(question.id, Number(event.target.value))}
+          />
+        )}
+        {question.type === "textarea" && (
+          <textarea
+            value={(answers[question.id] as string) || ""}
+            onChange={(event) => updateAnswer(question.id, event.target.value)}
+          />
+        )}
+        {question.type === "select" && (
+          <select
+            value={(answers[question.id] as string) || ""}
+            onChange={(event) => updateAnswer(question.id, event.target.value)}
+          >
+            <option value="">Select one</option>
+            {question.options?.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        )}
+        {(question.type === "radio" || question.type === "checkbox") && (
+          <div className="option-group">
+            {question.options?.map((option) => {
+              const selected = answers[question.id];
+              const checked =
+                question.type === "checkbox"
+                  ? Array.isArray(selected) && selected.includes(option.value)
+                  : selected === option.value;
+
+              return (
+                <label key={option.value} className="option">
+                  <input
+                    type={question.type}
+                    name={question.id}
+                    checked={checked}
+                    onChange={() => {
+                      if (question.type === "checkbox") {
+                        const currentValues = Array.isArray(selected) ? selected : [];
+                        const nextValues = checked
+                          ? currentValues.filter((value) => value !== option.value)
+                          : [...currentValues, option.value];
+                        updateAnswer(question.id, nextValues);
+                      } else {
+                        updateAnswer(question.id, option.value);
+                      }
+                    }}
+                  />
+                  {option.label}
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const handleBack = () => {
     setError(null);
-    if (steps[currentStep] === "consent" && !consentChecked) {
-      setError("Please provide consent to continue.");
+    setCurrentStep((prev) => Math.max(prev - 1, 0));
+  };
+
+  const handleNext = async () => {
+    setError(null);
+
+    if (isStartStep) {
+      if (!consentChecked) {
+        setError("Please provide consent to continue.");
+        return;
+      }
+
+      if (!contact.firstName || !contact.lastName || !contact.email || !contact.phone) {
+        setError("Please complete all required contact fields.");
+        return;
+      }
+
+      for (const question of initialQuestions) {
+        if (question.required && isAnswerMissing(question)) {
+          setError("Please answer all required questions to continue.");
+          return;
+        }
+      }
+
+      setIsSubmitting(true);
+      try {
+        const baseUrl = apiBaseUrl || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+        const payloadAnswers: Record<string, unknown> = {};
+        for (const question of initialQuestions) {
+          if (answers[question.id] !== undefined) {
+            payloadAnswers[question.id] = answers[question.id];
+          }
+        }
+
+        const payload = {
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          email: contact.email,
+          phone: contact.phone,
+          schoolId,
+          campusId,
+          programId,
+          answers: payloadAnswers,
+          honeypot,
+          metadata: {
+            utm: Object.fromEntries(new URLSearchParams(window.location.search)),
+            referrer: document.referrer,
+            userAgent: navigator.userAgent
+          },
+          consent: {
+            consented: consentChecked,
+            textVersion: consentVersion,
+            timestamp: new Date().toISOString()
+          }
+        };
+
+        const response = await fetch(`${baseUrl}/api/lead/start`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message || "Submission failed");
+        }
+
+        const data = (await response.json()) as { submissionId?: string };
+        if (data?.submissionId) {
+          setSubmissionId(data.submissionId);
+        }
+
+        if (remainingQuestions.length === 0) {
+          setSubmitted(true);
+          return;
+        }
+
+        setCurrentStep(1);
+      } catch (submitError) {
+        setError((submitError as Error).message);
+      } finally {
+        setIsSubmitting(false);
+      }
+
       return;
     }
 
@@ -140,47 +341,21 @@ export function FormEngine({
       return;
     }
 
-    setCurrentStep((prev) => Math.min(prev + 1, totalSteps - 1));
-  };
-
-  const handleBack = () => {
-    setError(null);
-    setCurrentStep((prev) => Math.max(prev - 1, 0));
-  };
-
-  const handleSubmit = async () => {
-    setError(null);
-    if (!contact.firstName || !contact.lastName || !contact.email) {
-      setError("Please complete all required contact fields.");
+    if (!submissionId) {
+      setError("Missing submission id. Please restart.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const url = `${apiBaseUrl || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000"}/api/submit`;
+      const baseUrl = apiBaseUrl || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
       const payload = {
-        firstName: contact.firstName,
-        lastName: contact.lastName,
-        email: contact.email,
-        phone: contact.phone || null,
-        schoolId,
-        campusId,
-        programId,
-        answers,
-        honeypot,
-        metadata: {
-          utm: Object.fromEntries(new URLSearchParams(window.location.search)),
-          referrer: document.referrer,
-          userAgent: navigator.userAgent
-        },
-        consent: {
-          consented: consentChecked,
-          textVersion: consentVersion,
-          timestamp: new Date().toISOString()
-        }
+        submissionId,
+        stepIndex: currentStep + 1,
+        answers: currentQuestion ? { [currentQuestion.id]: answers[currentQuestion.id] } : {}
       };
 
-      const response = await fetch(url, {
+      const response = await fetch(`${baseUrl}/api/lead/step`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -193,7 +368,11 @@ export function FormEngine({
         throw new Error(message || "Submission failed");
       }
 
-      setSubmitted(true);
+      if (isLastStep) {
+        setSubmitted(true);
+      } else {
+        setCurrentStep((prev) => Math.min(prev + 1, totalSteps - 1));
+      }
     } catch (submitError) {
       setError((submitError as Error).message);
     } finally {
@@ -220,9 +399,9 @@ export function FormEngine({
 
       {error && <p style={{ color: "#d9534f" }}>{error}</p>}
 
-      {steps[currentStep] === "consent" && (
+      {isStartStep && (
         <div className="form-step">
-          <h3>Quick consent</h3>
+          <h3>Get started</h3>
           <input
             type="text"
             value={honeypot}
@@ -232,94 +411,6 @@ export function FormEngine({
             aria-hidden="true"
             style={{ display: "none" }}
           />
-          <label>
-            <input
-              type="checkbox"
-              checked={consentChecked}
-              onChange={(event) => setConsentChecked(event.target.checked)}
-            />{" "}
-            I agree to receive calls, texts, or emails about program info.
-          </label>
-          <p className="disclaimer">{consentText}</p>
-        </div>
-      )}
-
-      {currentQuestion && (
-        <div className="form-step">
-          <label>{currentQuestion.label}</label>
-          {currentQuestion.type === "text" && (
-            <input
-              type="text"
-              value={(answers[currentQuestion.id] as string) || ""}
-              onChange={(event) => updateAnswer(currentQuestion.id, event.target.value)}
-            />
-          )}
-          {currentQuestion.type === "slider" && (
-            <input
-              type="range"
-              min={0}
-              max={10}
-              value={(answers[currentQuestion.id] as number) || 5}
-              onChange={(event) => updateAnswer(currentQuestion.id, Number(event.target.value))}
-            />
-          )}
-          {currentQuestion.type === "textarea" && (
-            <textarea
-              value={(answers[currentQuestion.id] as string) || ""}
-              onChange={(event) => updateAnswer(currentQuestion.id, event.target.value)}
-            />
-          )}
-          {currentQuestion.type === "select" && (
-            <select
-              value={(answers[currentQuestion.id] as string) || ""}
-              onChange={(event) => updateAnswer(currentQuestion.id, event.target.value)}
-            >
-              <option value="">Select one</option>
-              {currentQuestion.options?.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          )}
-          {(currentQuestion.type === "radio" || currentQuestion.type === "checkbox") && (
-            <div className="option-group">
-              {currentQuestion.options?.map((option) => {
-                const selected = answers[currentQuestion.id];
-                const checked =
-                  currentQuestion.type === "checkbox"
-                    ? Array.isArray(selected) && selected.includes(option.value)
-                    : selected === option.value;
-
-                return (
-                  <label key={option.value} className="option">
-                    <input
-                      type={currentQuestion.type}
-                      name={currentQuestion.id}
-                      checked={checked}
-                      onChange={() => {
-                        if (currentQuestion.type === "checkbox") {
-                          const currentValues = Array.isArray(selected) ? selected : [];
-                          const nextValues = checked
-                            ? currentValues.filter((value) => value !== option.value)
-                            : [...currentValues, option.value];
-                          updateAnswer(currentQuestion.id, nextValues);
-                        } else {
-                          updateAnswer(currentQuestion.id, option.value);
-                        }
-                      }}
-                    />
-                    {option.label}
-                  </label>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {steps[currentStep] === "contact" && (
-        <div className="form-step">
           <label>First name</label>
           <input
             type="text"
@@ -344,22 +435,30 @@ export function FormEngine({
             value={contact.phone}
             onChange={(event) => setContact({ ...contact, phone: event.target.value })}
           />
+          {initialQuestions.map((question) => renderQuestion(question))}
+          <label>
+            <input
+              type="checkbox"
+              checked={consentChecked}
+              onChange={(event) => setConsentChecked(event.target.checked)}
+            />{" "}
+            I agree to receive calls, texts, or emails about program info.
+          </label>
+          <p className="disclaimer">{consentText}</p>
         </div>
       )}
 
+      {currentQuestion && !isStartStep && (
+        <div className="form-step">{renderQuestion(currentQuestion)}</div>
+      )}
+
       <div className="actions">
-        <button className="secondary" onClick={handleBack} disabled={currentStep === 0}>
+        <button className="secondary" onClick={handleBack} disabled={currentStep === 0 || isSubmitting}>
           Back
         </button>
-        {steps[currentStep] === "contact" ? (
-          <button className="primary" onClick={handleSubmit} disabled={isSubmitting}>
-            {isSubmitting ? "Submitting..." : "Submit"}
-          </button>
-        ) : (
-          <button className="primary" onClick={handleNext}>
-            Next
-          </button>
-        )}
+        <button className="primary" onClick={handleNext} disabled={isSubmitting}>
+          {isSubmitting ? "Submitting..." : isStartStep ? "Get Started" : isLastStep ? "Finish" : "Next"}
+        </button>
       </div>
     </div>
   );

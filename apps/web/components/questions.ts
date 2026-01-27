@@ -17,6 +17,23 @@ export type Question = {
 
 export const DEFAULT_QUESTIONS: Question[] = [
   {
+    id: "program_interest",
+    type: "select",
+    label: "Which program are you interested in?",
+    required: true,
+    options: []
+  },
+  {
+    id: "campus_interest",
+    type: "radio",
+    label: "Are you interested in this campus?",
+    required: true,
+    options: [
+      { label: "Yes", value: "yes" },
+      { label: "No", value: "no" }
+    ]
+  },
+  {
     id: "education_level",
     type: "select",
     label: "Highest level of education",

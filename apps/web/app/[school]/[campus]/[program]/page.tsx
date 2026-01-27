@@ -25,6 +25,9 @@ export default function LandingPage({
   }
 
   const { school, campus, program, landingCopy, questionOverrides } = resolved;
+  const programOptions = config.programs
+    .filter((item) => item.schoolId === school.id)
+    .map((item) => ({ label: item.name, value: item.id }));
 
   const style = {
     "--color-primary": school.branding.colors.primary,
@@ -60,6 +63,8 @@ export default function LandingPage({
           consentText={school.compliance.disclaimerText}
           consentVersion={school.compliance.version}
           questionOverrides={questionOverrides}
+          programOptions={programOptions}
+          initialAnswers={{ program_interest: program.id }}
           ctaText={landingCopy.ctaText}
         />
       </div>

@@ -29,6 +29,9 @@ type SubmissionRow = {
   consent_text_version: string;
   consent_timestamp: string;
   idempotency_key: string;
+  crm_lead_id: string | null;
+  last_step_completed: number | null;
+  created_from_step: number | null;
 };
 
 function truncate(value: string | undefined, max = 5000) {
@@ -76,8 +79,15 @@ const worker = new Worker(
   env.queueName,
   async (job) => {
     const submissionId = job.data.submissionId as string;
+    const jobType = job.name;
+    const action = jobType === "create_lead" ? "create" : "update";
+
+    if (jobType !== "create_lead" && jobType !== "update_lead") {
+      throw new Error(`Unsupported job type: ${jobType}`);
+    }
+
     const attemptNumber = job.attemptsMade + 1;
-    console.log(`[${submissionId}] Delivery attempt ${attemptNumber}`);
+    console.log(`[${submissionId}] ${jobType} attempt ${attemptNumber}`);
 
     const submissionResult = await pool.query<SubmissionRow>(
       "SELECT * FROM submissions WHERE id = $1",
@@ -90,7 +100,7 @@ const worker = new Worker(
 
     const submission = submissionResult.rows[0];
 
-    if (submission.status === "delivered") {
+    if (submission.status === "delivered" && jobType === "create_lead") {
       console.log(`[${submissionId}] Already delivered, skipping`);
       return { skipped: true };
     }
@@ -102,9 +112,9 @@ const worker = new Worker(
 
     await pool.query(
       `INSERT INTO delivery_attempts
-        (id, submission_id, attempt_number, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $5)`,
-      [attemptId, submissionId, attemptNumber, "started", createdAt]
+        (id, submission_id, attempt_number, status, job_type, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $6)`,
+      [attemptId, submissionId, attemptNumber, "started", jobType, createdAt]
     );
 
     const config = getConfig();
@@ -133,9 +143,17 @@ const worker = new Worker(
       throw new Error("Missing CRM connection");
     }
 
+    if (jobType === "update_lead" && !submission.crm_lead_id) {
+      console.error(`[${submissionId}] Missing crm_lead_id for update`);
+      throw new Error("Missing crm_lead_id");
+    }
+
     const payload: DeliveryPayload = {
       submissionId,
       idempotencyKey: submission.idempotency_key,
+      action,
+      crmLeadId: submission.crm_lead_id,
+      stepIndex: typeof job.data.stepIndex === "number" ? job.data.stepIndex : null,
       schoolId: submission.school_id,
       campusId: submission.campus_id,
       programId: submission.program_id,
@@ -163,6 +181,10 @@ const worker = new Worker(
       result = await genericAdapter(payload, crmConnection.config || {});
     }
 
+    if (jobType === "create_lead" && result.success && !result.crmLeadId) {
+      result = { success: false, error: "Missing crm_lead_id from CRM response" };
+    }
+
     await pool.query(
       `UPDATE delivery_attempts
        SET status = $1, response_code = $2, response_body = $3, error = $4, updated_at = $5
@@ -186,6 +208,13 @@ const worker = new Worker(
       }
 
       throw new Error(result.error || `Delivery failed with status ${result.statusCode}`);
+    }
+
+    if (jobType === "create_lead" && result.crmLeadId) {
+      await pool.query("UPDATE submissions SET crm_lead_id = $1 WHERE id = $2", [
+        result.crmLeadId,
+        submissionId
+      ]);
     }
 
     await pool.query(

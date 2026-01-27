@@ -1,5 +1,18 @@
 import { AdapterResult, CrmAdapter } from "./types";
 
+function getValueByPath(value: unknown, path: string) {
+  if (!value || typeof value !== "object") return undefined;
+  const segments = path.split(".").filter(Boolean);
+  let current: any = value;
+  for (const segment of segments) {
+    if (current == null || typeof current !== "object" || !(segment in current)) {
+      return undefined;
+    }
+    current = current[segment];
+  }
+  return current;
+}
+
 export const webhookAdapter: CrmAdapter = async (payload, connectionConfig) => {
   const endpoint = connectionConfig.endpoint as string | undefined;
   if (!endpoint) {
@@ -33,7 +46,22 @@ export const webhookAdapter: CrmAdapter = async (payload, connectionConfig) => {
       return { success: false, statusCode: response.status, responseBody };
     }
 
-    return { success: true, statusCode: response.status, responseBody };
+    let crmLeadId: string | undefined;
+    const leadIdField = connectionConfig.leadIdField
+      ? String(connectionConfig.leadIdField)
+      : "id";
+
+    try {
+      const parsed = JSON.parse(responseBody);
+      const candidate = getValueByPath(parsed, leadIdField);
+      if (candidate !== undefined && candidate !== null) {
+        crmLeadId = String(candidate);
+      }
+    } catch {
+      crmLeadId = undefined;
+    }
+
+    return { success: true, statusCode: response.status, responseBody, crmLeadId };
   } catch (error) {
     return { success: false, error: (error as Error).message };
   }
