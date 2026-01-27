@@ -8,8 +8,20 @@ export const ColorSchema = z.object({
   text: z.string().optional()
 });
 
+const LogoUrlSchema = z
+  .string()
+  .refine((value) => {
+    if (value.startsWith("/")) return true;
+    try {
+      new URL(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }, "logoUrl must be an absolute URL or a public path starting with '/'");
+
 export const BrandingSchema = z.object({
-  logoUrl: z.string().url().optional(),
+  logoUrl: LogoUrlSchema.optional(),
   colors: ColorSchema
 });
 
