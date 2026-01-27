@@ -1,0 +1,22 @@
+{
+  "name": "lead_lander",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:api\" \"npm:dev:worker\"",
+    "dev:web": "npm --workspace apps/web run dev",
+    "dev:api": "npm --workspace apps/api run dev",
+    "dev:worker": "npm --workspace apps/worker run dev",
+    "build": "npm --workspace packages/config-schema run build && npm --workspace apps/api run build && npm --workspace apps/worker run build && npm --workspace apps/web run build",
+    "test": "vitest run",
+    "migrate": "tsx scripts/migrate.ts",
+    "summary": "tsx scripts/monthly-summary.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "concurrently": "^9.0.1",
+    "tsx": "^4.7.1",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

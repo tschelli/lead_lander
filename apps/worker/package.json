@@ -1,0 +1,26 @@
+{
+  "name": "@lead_lander/worker",
+  "private": true,
+  "version": "0.1.0",
+  "main": "dist/worker.js",
+  "scripts": {
+    "dev": "tsx watch src/worker.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/worker.js"
+  },
+  "dependencies": {
+    "@lead_lander/config-schema": "*",
+    "bullmq": "^5.8.0",
+    "dotenv": "^16.4.5",
+    "nodemailer": "^6.9.13",
+    "pg": "^8.11.5",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/nodemailer": "^6.4.14",
+    "@types/uuid": "^9.0.8",
+    "typescript": "^5.5.4",
+    "tsx": "^4.7.1"
+  }
+}

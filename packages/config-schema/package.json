@@ -1,0 +1,20 @@
+{
+  "name": "@lead_lander/config-schema",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json && tsx src/validate.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "yaml": "^2.4.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "tsx": "^4.7.1",
+    "vitest": "^2.0.5"
+  }
+}

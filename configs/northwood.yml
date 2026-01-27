@@ -1,0 +1,105 @@
+schools:
+  - id: school_northwood
+    slug: northwood-tech
+    name: Northwood Technical Institute
+    branding:
+      logoUrl: https://placehold.co/240x64?text=Northwood+Tech
+      colors:
+        primary: "#0F4C5C"
+        secondary: "#D9534F"
+        accent: "#F3D34A"
+        background: "#F7F4EF"
+        text: "#1B1B1B"
+    compliance:
+      disclaimerText: "By submitting this form you consent to receive calls, texts, or emails about programs. Message/data rates may apply."
+      version: "2026-01"
+    crmConnectionId: crm_webhook_northwood
+
+campuses:
+  - id: campus_downtown
+    schoolId: school_northwood
+    slug: downtown
+    name: Downtown Campus
+    routingTags: ["DT", "Metro"]
+    notifications:
+      enabled: true
+      recipients: ["admissions-dt@northwood.example"]
+  - id: campus_westside
+    schoolId: school_northwood
+    slug: westside
+    name: Westside Campus
+    routingTags: ["WS", "Suburban"]
+    notifications:
+      enabled: false
+      recipients: []
+
+programs:
+  - id: program_medical_assistant
+    schoolId: school_northwood
+    slug: medical-assistant
+    name: Medical Assistant
+    landingCopy:
+      headline: "Become a Medical Assistant in as little as 9 months"
+      subheadline: "Hands-on training with externship opportunities."
+      body: "Build skills in clinical procedures, patient care, and medical office workflows. Flexible class schedules available."
+      ctaText: "Request Program Info"
+  - id: program_welding
+    schoolId: school_northwood
+    slug: welding-technology
+    name: Welding Technology
+    landingCopy:
+      headline: "Train for a career in welding"
+      subheadline: "Learn MIG, TIG, and stick techniques in modern labs."
+      body: "Prepare for entry-level roles in fabrication, construction, and manufacturing."
+      ctaText: "Start Your Welding Journey"
+  - id: program_cybersecurity
+    schoolId: school_northwood
+    slug: cybersecurity
+    name: Cybersecurity
+    landingCopy:
+      headline: "Launch a career in cybersecurity"
+      subheadline: "Hands-on labs focused on defense and threat response."
+      body: "Gain skills in network security, incident response, and compliance."
+      ctaText: "Get Cybersecurity Details"
+
+landingPages:
+  - id: lp_downtown_medical
+    schoolId: school_northwood
+    campusId: campus_downtown
+    programId: program_medical_assistant
+    overrides:
+      landingCopy:
+        headline: "Downtown Medical Assistant Program"
+        subheadline: "Evening cohorts now enrolling."
+        body: "Downtown campus offers evening and weekend classes with clinical partners nearby."
+  - id: lp_downtown_welding
+    schoolId: school_northwood
+    campusId: campus_downtown
+    programId: program_welding
+  - id: lp_downtown_cyber
+    schoolId: school_northwood
+    campusId: campus_downtown
+    programId: program_cybersecurity
+  - id: lp_west_medical
+    schoolId: school_northwood
+    campusId: campus_westside
+    programId: program_medical_assistant
+  - id: lp_west_welding
+    schoolId: school_northwood
+    campusId: campus_westside
+    programId: program_welding
+  - id: lp_west_cyber
+    schoolId: school_northwood
+    campusId: campus_westside
+    programId: program_cybersecurity
+    notifications:
+      enabled: true
+      recipients: ["admissions-west@northwood.example", "programs@northwood.example"]
+
+crmConnections:
+  - id: crm_webhook_northwood
+    type: webhook
+    config:
+      endpoint: "https://example-crm.invalid/leads"
+      authHeaderName: "X-Api-Key"
+      authHeaderEnv: "CRM_WEBHOOK_TOKEN"

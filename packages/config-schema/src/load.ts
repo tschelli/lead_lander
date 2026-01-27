@@ -1,0 +1,110 @@
+import fs from "fs";
+import path from "path";
+import YAML from "yaml";
+import { ConfigSchema, type Config, type Campus, type LandingPage, type Program, type School } from "./schema";
+
+const SUPPORTED_EXTENSIONS = [".yml", ".yaml", ".json"];
+
+export function loadConfig(configDir: string): Config {
+  const files = fs
+    .readdirSync(configDir)
+    .filter((file) => SUPPORTED_EXTENSIONS.includes(path.extname(file)));
+
+  const merged: Config = {
+    schools: [],
+    campuses: [],
+    programs: [],
+    landingPages: [],
+    crmConnections: []
+  };
+
+  for (const file of files) {
+    const fullPath = path.join(configDir, file);
+    const raw = fs.readFileSync(fullPath, "utf8");
+    const parsed = parseConfigFile(raw, path.extname(file));
+    const validated = ConfigSchema.parse(parsed);
+
+    merged.schools.push(...validated.schools);
+    merged.campuses.push(...validated.campuses);
+    merged.programs.push(...validated.programs);
+    merged.landingPages.push(...validated.landingPages);
+    merged.crmConnections.push(...validated.crmConnections);
+  }
+
+  return merged;
+}
+
+function parseConfigFile(raw: string, ext: string) {
+  if (ext === ".json") {
+    return JSON.parse(raw);
+  }
+
+  return YAML.parse(raw);
+}
+
+export type ResolvedLandingPage = {
+  school: School;
+  campus: Campus;
+  program: Program;
+  landingPage: LandingPage;
+  landingCopy: Program["landingCopy"];
+  questionOverrides: Program["questionOverrides"] | undefined;
+};
+
+export function resolveLandingPageBySlugs(
+  config: Config,
+  schoolSlug: string,
+  campusSlug: string,
+  programSlug: string
+): ResolvedLandingPage | null {
+  const school = config.schools.find((item) => item.slug === schoolSlug);
+  if (!school) return null;
+
+  const campus = config.campuses.find(
+    (item) => item.slug === campusSlug && item.schoolId === school.id
+  );
+  if (!campus) return null;
+
+  const program = config.programs.find(
+    (item) => item.slug === programSlug && item.schoolId === school.id
+  );
+  if (!program) return null;
+
+  const landingPage = config.landingPages.find(
+    (item) =>
+      item.schoolId === school.id &&
+      item.campusId === campus.id &&
+      item.programId === program.id
+  );
+  if (!landingPage) return null;
+
+  const landingCopy = {
+    ...program.landingCopy,
+    ...landingPage.overrides?.landingCopy
+  };
+
+  const questionOverrides = landingPage.overrides?.questionOverrides ?? program.questionOverrides;
+
+  return { school, campus, program, landingPage, landingCopy, questionOverrides };
+}
+
+export function resolveEntitiesByIds(
+  config: Config,
+  schoolId: string,
+  campusId: string,
+  programId: string
+) {
+  const school = config.schools.find((item) => item.id === schoolId);
+  const campus = config.campuses.find(
+    (item) => item.id === campusId && item.schoolId === schoolId
+  );
+  const program = config.programs.find(
+    (item) => item.id === programId && item.schoolId === schoolId
+  );
+
+  if (!school || !campus || !program) {
+    return null;
+  }
+
+  return { school, campus, program };
+}
