@@ -24,19 +24,6 @@ export const DEFAULT_QUESTIONS: Question[] = [
     options: []
   },
   {
-    id: "education_level",
-    type: "select",
-    label: "Highest level of education",
-    required: true,
-    options: [
-      { label: "Some high school", value: "some_high_school" },
-      { label: "High school diploma or GED", value: "high_school" },
-      { label: "Some college", value: "some_college" },
-      { label: "Associate degree", value: "associate" },
-      { label: "Bachelor's degree", value: "bachelor" }
-    ]
-  },
-  {
     id: "campus_selection",
     type: "select",
     label: "Preferred campus",
@@ -73,6 +60,19 @@ export const DEFAULT_QUESTIONS: Question[] = [
       { label: "Yes", value: "yes" },
       { label: "No", value: "no" },
       { label: "Not sure", value: "not_sure" }
+    ]
+  },
+  {
+    id: "education_level",
+    type: "select",
+    label: "Highest level of education",
+    required: true,
+    options: [
+      { label: "Some high school", value: "some_high_school" },
+      { label: "High school diploma or GED", value: "high_school" },
+      { label: "Some college", value: "some_college" },
+      { label: "Associate degree", value: "associate" },
+      { label: "Bachelor's degree", value: "bachelor" }
     ]
   },
   {

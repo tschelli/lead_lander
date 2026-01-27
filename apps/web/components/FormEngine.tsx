@@ -41,7 +41,6 @@ const defaultContact: ContactInfo = {
 
 const INITIAL_QUESTION_ID_SET = new Set([
   "program_interest",
-  "education_level",
   "campus_selection"
 ]);
 
@@ -461,6 +460,7 @@ export function FormEngine({
           <div className="field-stack">
             {initialQuestions.map((question) => renderQuestion(question))}
           </div>
+          <p className="disclaimer">{consentText}</p>
           <label className="consent-line">
             <input
               type="checkbox"
@@ -469,7 +469,6 @@ export function FormEngine({
             />
             <span>I agree to receive calls, texts, or emails about program info.</span>
           </label>
-          <p className="disclaimer">{consentText}</p>
         </div>
       )}
 

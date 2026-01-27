@@ -232,7 +232,8 @@ const worker = new Worker(
     const notifications = landingPage?.notifications || entities.campus?.notifications;
 
     if (notifications?.enabled) {
-      const subject = `New lead: ${entities.program.name} (${entities.campus.name})`;
+      const campusName = entities.campus?.name || "Unspecified campus";
+      const subject = `New lead: ${entities.program.name} (${campusName})`;
       const body = buildEmailBody(payload);
       await sendNotificationEmail(notifications.recipients, subject, body);
     }

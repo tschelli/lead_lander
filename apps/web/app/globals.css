@@ -55,6 +55,12 @@ main {
   border: 1px solid rgba(15, 76, 92, 0.15);
 }
 
+.brand-logo {
+  width: min(240px, 70%);
+  height: auto;
+  margin-bottom: 6px;
+}
+
 .brand-card h1 {
   font-family: var(--font-display), "Times New Roman", serif;
   font-size: clamp(2rem, 3vw, 2.6rem);
