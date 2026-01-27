@@ -1,7 +1,6 @@
 import path from "path";
 import { loadConfig, resolveLandingPageBySlugs } from "@lead_lander/config-schema";
 import { FormEngine } from "../../../../components/FormEngine";
-import type { CSSProperties } from "react";
 
 export const dynamic = "force-dynamic";
 
@@ -27,13 +26,13 @@ export default function LandingPage({
 
   const { school, campus, program, landingCopy, questionOverrides } = resolved;
 
-  const style: CSSProperties = {
+  const style = {
     "--color-primary": school.branding.colors.primary,
     "--color-secondary": school.branding.colors.secondary,
     "--color-accent": school.branding.colors.accent || "#f3d34a",
     "--color-bg": school.branding.colors.background || "#f7f4ef",
     "--color-text": school.branding.colors.text || "#1b1b1b"
-  };
+  } as React.CSSProperties;
 
   return (
     <main style={style}>
