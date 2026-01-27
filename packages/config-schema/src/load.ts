@@ -44,7 +44,6 @@ function parseConfigFile(raw: string, ext: string) {
 
 export type ResolvedLandingPage = {
   school: School;
-  campus: Campus;
   program: Program;
   landingPage: LandingPage;
   landingCopy: Program["landingCopy"];
@@ -54,16 +53,10 @@ export type ResolvedLandingPage = {
 export function resolveLandingPageBySlugs(
   config: Config,
   schoolSlug: string,
-  campusSlug: string,
   programSlug: string
 ): ResolvedLandingPage | null {
   const school = config.schools.find((item) => item.slug === schoolSlug);
   if (!school) return null;
-
-  const campus = config.campuses.find(
-    (item) => item.slug === campusSlug && item.schoolId === school.id
-  );
-  if (!campus) return null;
 
   const program = config.programs.find(
     (item) => item.slug === programSlug && item.schoolId === school.id
@@ -71,10 +64,7 @@ export function resolveLandingPageBySlugs(
   if (!program) return null;
 
   const landingPage = config.landingPages.find(
-    (item) =>
-      item.schoolId === school.id &&
-      item.campusId === campus.id &&
-      item.programId === program.id
+    (item) => item.schoolId === school.id && item.programId === program.id
   );
   if (!landingPage) return null;
 
@@ -85,25 +75,33 @@ export function resolveLandingPageBySlugs(
 
   const questionOverrides = landingPage.overrides?.questionOverrides ?? program.questionOverrides;
 
-  return { school, campus, program, landingPage, landingCopy, questionOverrides };
+  return { school, program, landingPage, landingCopy, questionOverrides };
 }
 
 export function resolveEntitiesByIds(
   config: Config,
   schoolId: string,
-  campusId: string,
+  campusId: string | null | undefined,
   programId: string
 ) {
   const school = config.schools.find((item) => item.id === schoolId);
-  const campus = config.campuses.find(
-    (item) => item.id === campusId && item.schoolId === schoolId
-  );
   const program = config.programs.find(
     (item) => item.id === programId && item.schoolId === schoolId
   );
 
-  if (!school || !campus || !program) {
+  if (!school || !program) {
     return null;
+  }
+
+  let campus: Campus | null = null;
+
+  if (campusId) {
+    campus =
+      config.campuses.find((item) => item.id === campusId && item.schoolId === schoolId) || null;
+
+    if (!campus) {
+      return null;
+    }
   }
 
   return { school, campus, program };

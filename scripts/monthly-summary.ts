@@ -40,10 +40,12 @@ async function run() {
 
   console.log(`Monthly summary for ${month}`);
   for (const row of result.rows) {
-    const campus = config.campuses.find((item) => item.id === row.campus_id);
+    const campus = row.campus_id
+      ? config.campuses.find((item) => item.id === row.campus_id)
+      : null;
     const program = config.programs.find((item) => item.id === row.program_id);
     console.log(
-      `${campus?.name || row.campus_id} / ${program?.name || row.program_id}: received ${row.received}, delivered ${row.delivered}, failed ${row.failed}`
+      `${campus?.name || row.campus_id || "Unspecified campus"} / ${program?.name || row.program_id}: received ${row.received}, delivered ${row.delivered}, failed ${row.failed}`
     );
   }
 

@@ -86,6 +86,7 @@ export const ProgramSchema = z.object({
   schoolId: z.string().min(1),
   slug: z.string().min(1),
   name: z.string().min(1),
+  availableCampuses: z.array(z.string()).optional(),
   landingCopy: LandingCopySchema,
   questionOverrides: z.array(QuestionOverrideSchema).optional()
 });
@@ -93,8 +94,8 @@ export const ProgramSchema = z.object({
 export const LandingPageSchema = z.object({
   id: z.string().min(1),
   schoolId: z.string().min(1),
-  campusId: z.string().min(1),
   programId: z.string().min(1),
+  campusId: z.string().min(1).optional(),
   overrides: z
     .object({
       landingCopy: LandingCopySchema.optional(),

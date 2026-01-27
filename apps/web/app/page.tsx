@@ -5,7 +5,7 @@ export default function Home() {
         <h2>Lead Lander</h2>
         <p>Use a campus/program URL like:</p>
         <p>
-          <strong>/northwood-tech/downtown/medical-assistant</strong>
+          <strong>/northwood-tech/medical-assistant</strong>
         </p>
       </div>
     </main>

@@ -16,7 +16,7 @@ void deliveryQueue;
 type SubmissionRow = {
   id: string;
   school_id: string;
-  campus_id: string;
+  campus_id: string | null;
   program_id: string;
   first_name: string;
   last_name: string;
@@ -170,7 +170,7 @@ const worker = new Worker(
         textVersion: submission.consent_text_version,
         timestamp: submission.consent_timestamp
       },
-      routingTags: entities.campus.routingTags
+      routingTags: entities.campus?.routingTags || []
     };
 
     let result: AdapterResult;
@@ -226,13 +226,10 @@ const worker = new Worker(
     console.log(`[${submissionId}] Delivery succeeded`);
 
     const landingPage = config.landingPages.find(
-      (item) =>
-        item.schoolId === submission.school_id &&
-        item.campusId === submission.campus_id &&
-        item.programId === submission.program_id
+      (item) => item.schoolId === submission.school_id && item.programId === submission.program_id
     );
 
-    const notifications = landingPage?.notifications || entities.campus.notifications;
+    const notifications = landingPage?.notifications || entities.campus?.notifications;
 
     if (notifications?.enabled) {
       const subject = `New lead: ${entities.program.name} (${entities.campus.name})`;

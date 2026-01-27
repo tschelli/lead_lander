@@ -29,7 +29,7 @@ const SubmitSchema = z.object({
   email: z.string().email(),
   phone: z.string().optional().nullable(),
   schoolId: z.string().min(1),
-  campusId: z.string().min(1),
+  campusId: z.string().min(1).nullable(),
   programId: z.string().min(1),
   answers: z.record(z.any()).default({}),
   metadata: z
@@ -53,7 +53,7 @@ const StartSchema = z.object({
   email: z.string().email(),
   phone: z.string().min(1),
   schoolId: z.string().min(1),
-  campusId: z.string().min(1),
+  campusId: z.string().min(1).nullable(),
   programId: z.string().min(1),
   answers: z.record(z.any()).default({}),
   metadata: z

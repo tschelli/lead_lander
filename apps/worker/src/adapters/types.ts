@@ -5,7 +5,7 @@ export type DeliveryPayload = {
   crmLeadId?: string | null;
   stepIndex?: number | null;
   schoolId: string;
-  campusId: string;
+  campusId: string | null;
   programId: string;
   contact: {
     firstName: string;

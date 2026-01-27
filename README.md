@@ -22,27 +22,28 @@ Key entities:
 
 - **School** – branding, compliance disclaimer/version, CRM connection reference
 - **Campus** – routing slug, tags, email notification defaults
-- **Program** – landing copy + optional question overrides
-- **LandingPage** – ties school + campus + program with optional overrides
+- **Program** – landing copy + optional question overrides (and optional `availableCampuses`)
+- **LandingPage** – ties school + program with optional overrides
 - **CrmConnection** – currently supports `webhook` and `generic` (stub)
 
 To add a new landing page:
 
 1. Add or edit a file in `configs/`.
 2. Add a `school`, `campus`, and `program` entry if needed.
-3. Add a `landingPages` entry linking the school/campus/program IDs.
-4. Run `npm --workspace packages/config-schema run build` to validate.
+3. Add a `landingPages` entry linking the school/program IDs.
+4. (Optional) Add `program.availableCampuses` to restrict campus choices; otherwise all school campuses are shown.
+5. Run `npm --workspace packages/config-schema run build` to validate.
 
 Routes look like:
 
 ```
-/{school_slug}/{campus_slug}/{program_slug}
+/{school_slug}/{program_slug}
 ```
 
 Example from sample config:
 
 ```
-/northwood-tech/downtown/medical-assistant
+/northwood-tech/medical-assistant
 ```
 
 ## Local development

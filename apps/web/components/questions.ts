@@ -24,16 +24,6 @@ export const DEFAULT_QUESTIONS: Question[] = [
     options: []
   },
   {
-    id: "campus_interest",
-    type: "radio",
-    label: "Are you interested in this campus?",
-    required: true,
-    options: [
-      { label: "Yes", value: "yes" },
-      { label: "No", value: "no" }
-    ]
-  },
-  {
     id: "education_level",
     type: "select",
     label: "Highest level of education",
@@ -45,6 +35,13 @@ export const DEFAULT_QUESTIONS: Question[] = [
       { label: "Associate degree", value: "associate" },
       { label: "Bachelor's degree", value: "bachelor" }
     ]
+  },
+  {
+    id: "campus_selection",
+    type: "select",
+    label: "Preferred campus",
+    required: true,
+    options: []
   },
   {
     id: "start_timeline",

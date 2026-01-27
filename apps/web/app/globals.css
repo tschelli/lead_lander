@@ -98,11 +98,37 @@ main {
 .form-step {
   display: flex;
   flex-direction: column;
+  gap: 16px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
 
-.form-step label {
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label {
+  font-size: 0.85rem;
   font-weight: 600;
+  color: rgba(27, 27, 27, 0.75);
+}
+
+.field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.form-question {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .form-step input,
@@ -131,6 +157,18 @@ main {
   padding: 10px 12px;
   border-radius: var(--radius-sm);
   border: 1px solid rgba(15, 76, 92, 0.2);
+}
+
+.consent-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.consent-line input {
+  margin-top: 3px;
 }
 
 .actions {
@@ -185,6 +223,10 @@ button:hover {
   }
 
   .container {
+    grid-template-columns: 1fr;
+  }
+
+  .field-grid {
     grid-template-columns: 1fr;
   }
 }

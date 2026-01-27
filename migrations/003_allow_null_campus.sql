@@ -1,0 +1,1 @@
+ALTER TABLE submissions ALTER COLUMN campus_id DROP NOT NULL;

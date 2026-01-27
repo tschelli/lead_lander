@@ -14,12 +14,12 @@ export type QuestionOverride = {
 
 type FormEngineProps = {
   schoolId: string;
-  campusId: string;
   programId: string;
   consentText: string;
   consentVersion: string;
   questionOverrides?: QuestionOverride[];
   programOptions?: QuestionOption[];
+  campusOptions?: QuestionOption[];
   initialAnswers?: Record<string, unknown>;
   apiBaseUrl?: string;
   ctaText?: string;
@@ -42,7 +42,7 @@ const defaultContact: ContactInfo = {
 const INITIAL_QUESTION_ID_SET = new Set([
   "program_interest",
   "education_level",
-  "campus_interest"
+  "campus_selection"
 ]);
 
 function applyOverrides(questions: Question[], overrides?: QuestionOverride[]) {
@@ -85,12 +85,12 @@ function isQuestionVisible(question: Question, answers: Record<string, unknown>)
 
 export function FormEngine({
   schoolId,
-  campusId,
   programId,
   consentText,
   consentVersion,
   questionOverrides,
   programOptions,
+  campusOptions,
   initialAnswers,
   apiBaseUrl,
   ctaText
@@ -106,26 +106,28 @@ export function FormEngine({
   const [submissionId, setSubmissionId] = useState<string | null>(null);
 
   const mergedOverrides = useMemo(() => {
-    if (!programOptions || programOptions.length === 0) {
-      return questionOverrides;
-    }
+    let merged = questionOverrides || [];
 
-    const hasProgramOverride = questionOverrides?.some(
-      (override) => override.id === "program_interest" && override.options?.length
-    );
-
-    if (hasProgramOverride) {
-      return questionOverrides;
-    }
-
-    return [
-      ...(questionOverrides || []),
-      {
-        id: "program_interest",
-        options: programOptions
+    if (programOptions && programOptions.length > 0) {
+      const hasProgramOverride = merged.some(
+        (override) => override.id === "program_interest" && override.options?.length
+      );
+      if (!hasProgramOverride) {
+        merged = [...merged, { id: "program_interest", options: programOptions }];
       }
-    ];
-  }, [programOptions, questionOverrides]);
+    }
+
+    if (campusOptions && campusOptions.length > 0) {
+      const hasCampusOverride = merged.some(
+        (override) => override.id === "campus_selection" && override.options?.length
+      );
+      if (!hasCampusOverride) {
+        merged = [...merged, { id: "campus_selection", options: campusOptions }];
+      }
+    }
+
+    return merged.length > 0 ? merged : undefined;
+  }, [campusOptions, programOptions, questionOverrides]);
 
   const questions = useMemo(
     () => applyOverrides(DEFAULT_QUESTIONS, mergedOverrides),
@@ -171,10 +173,11 @@ export function FormEngine({
 
   const renderQuestion = (question: Question) => {
     return (
-      <div className="form-question" key={question.id}>
-        <label>{question.label}</label>
+      <div className="form-question field" key={question.id}>
+        <label className="field-label">{question.label}</label>
         {question.type === "text" && (
           <input
+            className="field-input"
             type="text"
             value={(answers[question.id] as string) || ""}
             onChange={(event) => updateAnswer(question.id, event.target.value)}
@@ -182,6 +185,7 @@ export function FormEngine({
         )}
         {question.type === "slider" && (
           <input
+            className="field-input"
             type="range"
             min={0}
             max={10}
@@ -191,12 +195,14 @@ export function FormEngine({
         )}
         {question.type === "textarea" && (
           <textarea
+            className="field-input"
             value={(answers[question.id] as string) || ""}
             onChange={(event) => updateAnswer(question.id, event.target.value)}
           />
         )}
         {question.type === "select" && (
           <select
+            className="field-input"
             value={(answers[question.id] as string) || ""}
             onChange={(event) => updateAnswer(question.id, event.target.value)}
           >
@@ -280,6 +286,9 @@ export function FormEngine({
             payloadAnswers[question.id] = answers[question.id];
           }
         }
+
+        const selectedCampus = answers.campus_selection as string | undefined;
+        const campusId = selectedCampus && selectedCampus !== "not_sure" ? selectedCampus : null;
 
         const payload = {
           firstName: contact.firstName,
@@ -411,38 +420,54 @@ export function FormEngine({
             aria-hidden="true"
             style={{ display: "none" }}
           />
-          <label>First name</label>
-          <input
-            type="text"
-            value={contact.firstName}
-            onChange={(event) => setContact({ ...contact, firstName: event.target.value })}
-          />
-          <label>Last name</label>
-          <input
-            type="text"
-            value={contact.lastName}
-            onChange={(event) => setContact({ ...contact, lastName: event.target.value })}
-          />
-          <label>Email</label>
-          <input
-            type="email"
-            value={contact.email}
-            onChange={(event) => setContact({ ...contact, email: event.target.value })}
-          />
-          <label>Phone</label>
-          <input
-            type="tel"
-            value={contact.phone}
-            onChange={(event) => setContact({ ...contact, phone: event.target.value })}
-          />
-          {initialQuestions.map((question) => renderQuestion(question))}
-          <label>
+          <div className="field-grid">
+            <div className="field">
+              <label className="field-label">First name</label>
+              <input
+                className="field-input"
+                type="text"
+                value={contact.firstName}
+                onChange={(event) => setContact({ ...contact, firstName: event.target.value })}
+              />
+            </div>
+            <div className="field">
+              <label className="field-label">Last name</label>
+              <input
+                className="field-input"
+                type="text"
+                value={contact.lastName}
+                onChange={(event) => setContact({ ...contact, lastName: event.target.value })}
+              />
+            </div>
+            <div className="field">
+              <label className="field-label">Email</label>
+              <input
+                className="field-input"
+                type="email"
+                value={contact.email}
+                onChange={(event) => setContact({ ...contact, email: event.target.value })}
+              />
+            </div>
+            <div className="field">
+              <label className="field-label">Phone</label>
+              <input
+                className="field-input"
+                type="tel"
+                value={contact.phone}
+                onChange={(event) => setContact({ ...contact, phone: event.target.value })}
+              />
+            </div>
+          </div>
+          <div className="field-stack">
+            {initialQuestions.map((question) => renderQuestion(question))}
+          </div>
+          <label className="consent-line">
             <input
               type="checkbox"
               checked={consentChecked}
               onChange={(event) => setConsentChecked(event.target.checked)}
-            />{" "}
-            I agree to receive calls, texts, or emails about program info.
+            />
+            <span>I agree to receive calls, texts, or emails about program info.</span>
           </label>
           <p className="disclaimer">{consentText}</p>
         </div>
