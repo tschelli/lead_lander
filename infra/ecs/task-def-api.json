@@ -1,0 +1,38 @@
+{
+  "family": "lead-lender-api",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/<ECS_TASK_EXECUTION_ROLE>",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/<ECS_TASK_ROLE>",
+  "containerDefinitions": [
+    {
+      "name": "api",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/lead-lender-api:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 4000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "DATABASE_URL", "value": "postgres://USER:PASS@RDS_ENDPOINT:5432/lead_lander" },
+        { "name": "REDIS_URL", "value": "redis://REDIS_ENDPOINT:6379" },
+        { "name": "CONFIG_DIR", "value": "/app/configs" },
+        { "name": "DELIVERY_QUEUE_NAME", "value": "lead_delivery" },
+        { "name": "DELIVERY_MAX_ATTEMPTS", "value": "5" },
+        { "name": "DELIVERY_BACKOFF_MS", "value": "10000" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/lead-lender-api",
+          "awslogs-region": "<REGION>",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

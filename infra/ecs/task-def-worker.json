@@ -1,0 +1,40 @@
+{
+  "family": "lead-lender-worker",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/<ECS_TASK_EXECUTION_ROLE>",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/<ECS_TASK_ROLE>",
+  "containerDefinitions": [
+    {
+      "name": "worker",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/lead-lender-worker:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 5005,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "DATABASE_URL", "value": "postgres://USER:PASS@RDS_ENDPOINT:5432/lead_lander" },
+        { "name": "REDIS_URL", "value": "redis://REDIS_ENDPOINT:6379" },
+        { "name": "CONFIG_DIR", "value": "/app/configs" },
+        { "name": "DELIVERY_QUEUE_NAME", "value": "lead_delivery" },
+        { "name": "DELIVERY_MAX_ATTEMPTS", "value": "5" },
+        { "name": "WORKER_PORT", "value": "5005" },
+        { "name": "CRM_WEBHOOK_TOKEN", "value": "replace-me" },
+        { "name": "EMAIL_ENABLED", "value": "false" }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/lead-lender-worker",
+          "awslogs-region": "<REGION>",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}

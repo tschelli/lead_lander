@@ -1,0 +1,14 @@
+{
+  "cluster": "lead-lender-cluster",
+  "serviceName": "lead-lender-worker",
+  "taskDefinition": "lead-lender-worker",
+  "desiredCount": 1,
+  "launchType": "FARGATE",
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": ["subnet-xxxxxxxx"],
+      "securityGroups": ["sg-xxxxxxxx"],
+      "assignPublicIp": "ENABLED"
+    }
+  }
+}

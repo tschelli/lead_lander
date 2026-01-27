@@ -1,0 +1,22 @@
+{
+  "cluster": "lead-lender-cluster",
+  "serviceName": "lead-lender-api",
+  "taskDefinition": "lead-lender-api",
+  "desiredCount": 1,
+  "launchType": "FARGATE",
+  "healthCheckGracePeriodSeconds": 30,
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": ["subnet-xxxxxxxx"],
+      "securityGroups": ["sg-xxxxxxxx"],
+      "assignPublicIp": "ENABLED"
+    }
+  },
+  "loadBalancers": [
+    {
+      "targetGroupArn": "arn:aws:elasticloadbalancing:<REGION>:<ACCOUNT_ID>:targetgroup/<TG_NAME>/<TG_ID>",
+      "containerName": "api",
+      "containerPort": 4000
+    }
+  ]
+}

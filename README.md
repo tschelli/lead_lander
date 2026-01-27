@@ -132,3 +132,7 @@ Includes config validation and idempotency unit tests.
 ## Environment variables
 
 See `.env.example` for defaults. `CONFIG_DIR` is resolved from each app's working directory (default `../../configs`). Secrets (CRM webhook token, SMTP creds) should be provided via env vars.
+
+## Deployment (AWS + Vercel)
+
+See `docs/aws-deploy.md` for ECS + ALB + CloudFront steps and `infra/ecs/` for task/service templates.
