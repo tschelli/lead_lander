@@ -4,14 +4,14 @@ import { v4 as uuidv4 } from "uuid";
 import { env } from "./env";
 import { pool } from "./db";
 import { getConfig } from "./config";
-import { deliveryQueueScheduler } from "./queue";
+import { deliveryQueue } from "./queue";
 import { webhookAdapter } from "./adapters/webhookAdapter";
 import { genericAdapter } from "./adapters/genericAdapter";
 import type { AdapterResult, DeliveryPayload } from "./adapters/types";
 import { sendNotificationEmail } from "./email";
 import { resolveEntitiesByIds } from "@lead_lander/config-schema";
 
-void deliveryQueueScheduler;
+void deliveryQueue;
 
 type SubmissionRow = {
   id: string;
