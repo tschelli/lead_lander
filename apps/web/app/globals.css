@@ -142,7 +142,7 @@ main {
   gap: 8px;
 }
 
-.form-step input,
+.form-step input:not([type="checkbox"]):not([type="radio"]),
 .form-step select,
 .form-step textarea {
   padding: 12px 14px;
@@ -179,9 +179,11 @@ main {
   text-align: left;
 }
 
-.consent-line input {
+.consent-line input[type="checkbox"] {
+  width: auto;
   margin-top: 2px;
   flex-shrink: 0;
+  padding: 0;
 }
 
 .consent-line span {
