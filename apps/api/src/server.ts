@@ -191,7 +191,7 @@ app.post("/api/lead/start", async (req, res) => {
           stepIndex: 1
         },
         {
-          jobId: `create:${submissionId}`,
+          jobId: `create-${submissionId}`,
           attempts: env.deliveryMaxAttempts,
           backoff: {
             type: "exponential",
@@ -254,7 +254,7 @@ app.post("/api/lead/step", async (req, res) => {
         stepIndex: payload.stepIndex
       },
       {
-        jobId: `update:${payload.submissionId}:${payload.stepIndex}`,
+        jobId: `update-${payload.submissionId}-${payload.stepIndex}`,
         attempts: env.deliveryMaxAttempts,
         backoff: {
           type: "exponential",
@@ -369,7 +369,7 @@ app.post("/api/submit", async (req, res) => {
           stepIndex: 1
         },
         {
-          jobId: `create:${submissionId}`,
+          jobId: `create-${submissionId}`,
           attempts: env.deliveryMaxAttempts,
           backoff: {
             type: "exponential",
