@@ -1,0 +1,26 @@
+version: 0.2
+
+env:
+  variables:
+    AWS_REGION: us-west-1
+    API_REPO: lead-lender-api
+    WORKER_REPO: lead-lender-worker
+
+phases:
+  pre_build:
+    commands:
+      - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+      - IMAGE_TAG=$(date +%Y%m%d%H%M%S)
+      - API_URI=$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$API_REPO
+      - WORKER_URI=$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$WORKER_REPO
+  build:
+    commands:
+      - docker build -f apps/api/Dockerfile -t $API_URI:$IMAGE_TAG .
+      - docker build -f apps/worker/Dockerfile -t $WORKER_URI:$IMAGE_TAG .
+  post_build:
+    commands:
+      - docker push $API_URI:$IMAGE_TAG
+      - docker push $WORKER_URI:$IMAGE_TAG
+      - echo "Pushed $API_URI:$IMAGE_TAG"
+      - echo "Pushed $WORKER_URI:$IMAGE_TAG"
