@@ -61,6 +61,11 @@ main {
   margin-bottom: 6px;
 }
 
+.school-badge {
+  font-size: 0.9rem;
+  padding: 8px 16px;
+}
+
 .brand-card h1 {
   font-family: var(--font-display), "Times New Roman", serif;
   font-size: clamp(2rem, 3vw, 2.6rem);
@@ -168,13 +173,19 @@ main {
 .consent-line {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
   font-size: 0.9rem;
   line-height: 1.4;
+  text-align: left;
 }
 
 .consent-line input {
-  margin-top: 3px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.consent-line span {
+  display: inline-block;
 }
 
 .actions {

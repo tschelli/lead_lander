@@ -59,11 +59,11 @@ export default function LandingPage({
     <main style={style}>
       <div className="container">
         <section className="brand-card">
+          <span className="badge school-badge">{school.name}</span>
           {school.branding.logoUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={school.branding.logoUrl} alt={`${school.name} logo`} className="brand-logo" />
           )}
-          <span className="badge">{school.name}</span>
           <h1>{landingCopy.headline}</h1>
           <h2>{landingCopy.subheadline}</h2>
           <p>{landingCopy.body}</p>
