@@ -214,6 +214,56 @@ app.get("/api/admin/:school/metrics", async (req, res) => {
   }
 });
 
+app.get("/api/admin/:school/submissions", async (req, res) => {
+  try {
+    if (env.adminApiKey) {
+      const headerKey = req.get("x-admin-key");
+      if (!headerKey || headerKey !== env.adminApiKey) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+    }
+
+    const schoolSlug = req.params.school;
+    const config = getConfig();
+    const school = config.schools.find((item) => item.slug === schoolSlug);
+
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    const result = await pool.query(
+      `
+        SELECT id, email, status, crm_lead_id, program_id, campus_id, created_at
+        FROM submissions
+        WHERE school_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
+      `,
+      [school.id, limit, offset]
+    );
+
+    return res.json({
+      rows: result.rows.map((row) => ({
+        id: row.id,
+        email: row.email,
+        status: row.status,
+        crmLeadId: row.crm_lead_id,
+        programId: row.program_id,
+        campusId: row.campus_id,
+        createdAt: row.created_at
+      })),
+      limit,
+      offset
+    });
+  } catch (error) {
+    console.error("Admin submissions error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.post("/api/lead/start", async (req, res) => {
   try {
     const parseResult = StartSchema.safeParse(req.body);

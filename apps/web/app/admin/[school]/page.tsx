@@ -1,7 +1,6 @@
 import path from "path";
 import { loadConfig } from "@lead_lander/config-schema";
 import "./styles.css";
-import { ConfigBuilder } from "./ConfigBuilder";
 
 export const dynamic = "force-dynamic";
 
@@ -149,8 +148,8 @@ export default async function AdminAccount({ params }: { params: { school: strin
           )}
         </div>
         <div className="admin-official__actions">
-          <button className="admin-btn">Download CSV</button>
-          <button className="admin-official__ghost">Config builder</button>
+          <a className="admin-btn" href={`/admin/${school.slug}/database`}>Database</a>
+          <a className="admin-official__ghost" href={`/admin/${school.slug}/config`}>Config builder</a>
         </div>
       </header>
 
@@ -273,24 +272,20 @@ export default async function AdminAccount({ params }: { params: { school: strin
             <div key={row.label} className="admin-official__draft">
               <p className="admin-muted">{row.label}</p>
               <p>{row.detail}</p>
-              <button className="admin-official__ghost">Review</button>
+              <a className="admin-official__ghost" href={`/admin/${school.slug}/config`}>Review</a>
             </div>
           ))}
-          <div style={{ marginTop: "16px" }}>
-            <ConfigBuilder
-              programs={programs.map((program) => ({
-                id: program.id,
-                name: program.name,
-                landingCopy: program.landingCopy
-              }))}
-            />
-          </div>
         </section>
       </div>
 
       <section className="admin-card">
-        <h3>Database snapshot</h3>
-        <p className="admin-muted">Read-only preview of recent submissions.</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h3>Database snapshot</h3>
+            <p className="admin-muted">Read-only preview of recent submissions.</p>
+          </div>
+          <a className="admin-official__ghost" href={`/admin/${school.slug}/database`}>View all</a>
+        </div>
         <table className="admin-table">
           <thead>
             <tr>
