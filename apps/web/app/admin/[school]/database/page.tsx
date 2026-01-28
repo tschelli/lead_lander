@@ -1,14 +1,13 @@
-import path from "path";
 import { loadConfig } from "@lead_lander/config-schema";
 import { DatabaseView } from "../DatabaseView";
 import "../styles.css";
-import { resolveAdminKey } from "../../lib/adminKeys";
+import { resolveAdminKey } from "../../../lib/adminKeys";
+import { resolveConfigDir } from "../../../lib/configDir";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminDatabase({ params }: { params: { school: string } }) {
-  const configDir = path.resolve(process.cwd(), "../../configs");
-  const config = loadConfig(configDir);
+  const config = loadConfig(resolveConfigDir());
   const school = config.schools.find((item) => item.slug === params.school);
 
   if (!school) {

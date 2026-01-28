@@ -1,13 +1,12 @@
-import path from "path";
 import { loadConfig } from "@lead_lander/config-schema";
 import { ConfigBuilder } from "../ConfigBuilder";
 import "../styles.css";
+import { resolveConfigDir } from "../../../lib/configDir";
 
 export const dynamic = "force-dynamic";
 
 export default function AdminConfig({ params }: { params: { school: string } }) {
-  const configDir = path.resolve(process.cwd(), "../../configs");
-  const config = loadConfig(configDir);
+  const config = loadConfig(resolveConfigDir());
   const school = config.schools.find((item) => item.slug === params.school);
 
   if (!school) {

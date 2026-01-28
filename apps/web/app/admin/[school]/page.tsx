@@ -1,7 +1,7 @@
-import path from "path";
 import { loadConfig } from "@lead_lander/config-schema";
 import "./styles.css";
-import { resolveAdminKey } from "../../lib/adminKeys";
+import { resolveAdminKey } from "../../../lib/adminKeys";
+import { resolveConfigDir } from "../../../lib/configDir";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +20,7 @@ type MetricsResponse = {
 };
 
 export default async function AdminAccount({ params }: { params: { school: string } }) {
-  const configDir = path.resolve(process.cwd(), "../../configs");
-  const config = loadConfig(configDir);
+  const config = loadConfig(resolveConfigDir());
   const school = config.schools.find((item) => item.slug === params.school);
 
   if (!school) {

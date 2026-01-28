@@ -1,5 +1,5 @@
-import path from "path";
 import { loadConfig, resolveLandingPageBySlugs } from "@lead_lander/config-schema";
+import { resolveConfigDir } from "../../../lib/configDir";
 import { FormEngine } from "../../../components/FormEngine";
 
 export const dynamic = "force-dynamic";
@@ -9,8 +9,7 @@ export default function LandingPage({
 }: {
   params: { school: string; program: string };
 }) {
-  const configDir = path.resolve(process.cwd(), "../../configs");
-  const config = loadConfig(configDir);
+  const config = loadConfig(resolveConfigDir());
   const resolved = resolveLandingPageBySlugs(config, params.school, params.program);
 
   if (!resolved) {
