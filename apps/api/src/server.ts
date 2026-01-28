@@ -1,6 +1,7 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import UAParser from "ua-parser-js";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
@@ -9,11 +10,20 @@ import { pool } from "./db";
 import { deliveryQueue } from "./queue";
 import { computeIdempotencyKey } from "./idempotency";
 import { getConfig } from "./config";
+import { PgAuthRepo } from "./authRepo";
+import {
+  authenticateUser,
+  createSessionToken,
+  requestPasswordReset,
+  resetPasswordWithToken,
+  verifySessionToken
+} from "./auth";
 import { resolveEntitiesByIds } from "@lead_lander/config-schema";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 app.use(cors());
+app.use(cookieParser());
 
 const limiter = rateLimit({
   windowMs: env.rateLimitWindowMs,
@@ -23,6 +33,22 @@ const limiter = rateLimit({
 });
 
 app.use(limiter);
+
+const authRepo = new PgAuthRepo(pool);
+
+const AuthLoginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1)
+});
+
+const AuthResetRequestSchema = z.object({
+  email: z.string().email()
+});
+
+const AuthResetSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(8)
+});
 
 const SubmitSchema = z.object({
   firstName: z.string().min(1),
@@ -213,6 +239,120 @@ function buildSubmissionFilters(req: express.Request, schoolId: string) {
 
   return { whereSql, values };
 }
+
+function getAuthCookieOptions() {
+  const secure = env.authCookieSecure || process.env.NODE_ENV === "production";
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure,
+    path: "/"
+  };
+}
+
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const parseResult = AuthLoginSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
+    }
+
+    const { email, password } = parseResult.data;
+    const authResult = await authenticateUser(authRepo, email, password);
+    if (!authResult.ok) {
+      return res.status(401).json({ error: "Invalid email or password" });
+    }
+
+    await authRepo.updateLastLogin(authResult.user.id);
+    const token = createSessionToken(authResult.user.id);
+    res.cookie(env.authCookieName, token, getAuthCookieOptions());
+
+    return res.json({
+      user: {
+        id: authResult.user.id,
+        email: authResult.user.email,
+        emailVerified: authResult.user.emailVerified
+      }
+    });
+  } catch (error) {
+    console.error("Auth login error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/auth/logout", (_req, res) => {
+  res.clearCookie(env.authCookieName, getAuthCookieOptions());
+  return res.json({ status: "ok" });
+});
+
+app.get("/api/auth/me", async (req, res) => {
+  try {
+    const token = req.cookies?.[env.authCookieName];
+    if (!token) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const session = verifySessionToken(token);
+    if (!session) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const user = await authRepo.findUserById(session.userId);
+    if (!user) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    return res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        emailVerified: user.emailVerified
+      }
+    });
+  } catch (error) {
+    console.error("Auth me error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/auth/request-password-reset", async (req, res) => {
+  try {
+    const parseResult = AuthResetRequestSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
+    }
+
+    await requestPasswordReset(authRepo, parseResult.data.email);
+    return res.json({ status: "ok" });
+  } catch (error) {
+    console.error("Auth reset request error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/auth/reset-password", async (req, res) => {
+  try {
+    const parseResult = AuthResetSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
+    }
+
+    const result = await resetPasswordWithToken(
+      authRepo,
+      parseResult.data.token,
+      parseResult.data.password
+    );
+
+    if (!result.ok) {
+      return res.status(400).json({ error: "Invalid or expired token" });
+    }
+
+    return res.json({ status: "ok" });
+  } catch (error) {
+    console.error("Auth reset error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 app.get("/healthz", (_req, res) => {
   res.json({ status: "ok" });
