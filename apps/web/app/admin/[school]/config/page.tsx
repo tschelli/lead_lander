@@ -5,7 +5,7 @@ import { ConfigBuilder } from "../ConfigBuilder";
 export const dynamic = "force-dynamic";
 
 export default function AdminConfig({ params }: { params: { school: string } }) {
-  const configDir = path.resolve(process.cwd(), "../../../configs");
+  const configDir = path.resolve(process.cwd(), "../../configs");
   const config = loadConfig(configDir);
   const school = config.schools.find((item) => item.slug === params.school);
 
