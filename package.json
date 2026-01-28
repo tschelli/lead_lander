@@ -10,7 +10,8 @@
     "build": "npm --workspace packages/config-schema run build && npm --workspace apps/api run build && npm --workspace apps/worker run build && npm --workspace apps/web run build",
     "test": "vitest run",
     "migrate": "tsx scripts/migrate.ts",
-    "summary": "tsx scripts/monthly-summary.ts"
+    "summary": "tsx scripts/monthly-summary.ts",
+    "requeue": "tsx scripts/requeue-missing-crm.ts"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",

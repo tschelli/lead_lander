@@ -1,6 +1,7 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
 import cors from "cors";
+import UAParser from "ua-parser-js";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { env } from "./env";
@@ -81,10 +82,31 @@ function buildMetadata(
   req: express.Request,
   metadata?: { utm?: Record<string, string>; referrer?: string; userAgent?: string }
 ) {
+  const userAgent = metadata?.userAgent || req.get("user-agent") || undefined;
+  const parsed = userAgent ? new UAParser(userAgent).getResult() : null;
+  const browser = parsed?.browser?.name
+    ? { name: parsed.browser.name, version: parsed.browser.version || null }
+    : null;
+  const device = parsed?.device?.type
+    ? {
+        type: parsed.device.type,
+        vendor: parsed.device.vendor || null,
+        model: parsed.device.model || null
+      }
+    : userAgent
+      ? {
+          type: "desktop",
+          vendor: null,
+          model: null
+        }
+      : null;
+
   return {
     ...metadata,
     referrer: metadata?.referrer || req.get("referer") || undefined,
-    userAgent: metadata?.userAgent || req.get("user-agent") || undefined,
+    userAgent,
+    browser,
+    device,
     ip: req.ip
   };
 }
@@ -93,6 +115,50 @@ function parseDateInput(value?: string) {
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseAdminKeyMap() {
+  const raw = process.env.ADMIN_API_KEYS;
+  if (!raw) return {};
+
+  try {
+    const parsed = JSON.parse(raw) as Record<string, string>;
+    if (parsed && typeof parsed === "object") {
+      return Object.entries(parsed).reduce<Record<string, string>>((acc, [key, value]) => {
+        if (typeof value === "string") {
+          acc[key] = value;
+        }
+        return acc;
+      }, {});
+    }
+  } catch (_error) {
+    // Fall back to comma-delimited parsing below.
+  }
+
+  return raw.split(",").reduce<Record<string, string>>((acc, pair) => {
+    const trimmed = pair.trim();
+    if (!trimmed) return acc;
+    const [slug, ...rest] = trimmed.split(":");
+    const key = rest.join(":").trim();
+    if (slug && key) {
+      acc[slug.trim()] = key;
+    }
+    return acc;
+  }, {});
+}
+
+const adminKeyMap = parseAdminKeyMap();
+
+function resolveAdminKey(schoolSlug: string) {
+  return adminKeyMap[schoolSlug] || env.adminApiKey || "";
+}
+
+async function logAdminAudit(schoolId: string, event: string, payload: Record<string, unknown>) {
+  await pool.query(
+    `INSERT INTO admin_audit_log (id, school_id, event, payload, created_at)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [uuidv4(), schoolId, event, payload, new Date()]
+  );
 }
 
 function buildSubmissionFilters(req: express.Request, schoolId: string) {
@@ -154,14 +220,15 @@ app.get("/healthz", (_req, res) => {
 
 app.get("/api/admin/:school/metrics", async (req, res) => {
   try {
-    if (env.adminApiKey) {
+    const schoolSlug = req.params.school;
+    const expectedKey = resolveAdminKey(schoolSlug);
+
+    if (expectedKey) {
       const headerKey = req.get("x-admin-key");
-      if (!headerKey || headerKey !== env.adminApiKey) {
+      if (!headerKey || headerKey !== expectedKey) {
         return res.status(401).json({ error: "Unauthorized" });
       }
     }
-
-    const schoolSlug = req.params.school;
     const config = getConfig();
     const school = config.schools.find((item) => item.slug === schoolSlug);
 
@@ -275,14 +342,15 @@ app.get("/api/admin/:school/metrics", async (req, res) => {
 
 app.get("/api/admin/:school/submissions", async (req, res) => {
   try {
-    if (env.adminApiKey) {
+    const schoolSlug = req.params.school;
+    const expectedKey = resolveAdminKey(schoolSlug);
+
+    if (expectedKey) {
       const headerKey = req.get("x-admin-key");
-      if (!headerKey || headerKey !== env.adminApiKey) {
+      if (!headerKey || headerKey !== expectedKey) {
         return res.status(401).json({ error: "Unauthorized" });
       }
     }
-
-    const schoolSlug = req.params.school;
     const config = getConfig();
     const school = config.schools.find((item) => item.slug === schoolSlug);
 
@@ -354,14 +422,15 @@ app.get("/api/admin/:school/submissions", async (req, res) => {
 
 app.get("/api/admin/:school/submissions/export", async (req, res) => {
   try {
-    if (env.adminApiKey) {
+    const schoolSlug = req.params.school;
+    const expectedKey = resolveAdminKey(schoolSlug);
+
+    if (expectedKey) {
       const headerKey = req.get("x-admin-key");
-      if (!headerKey || headerKey !== env.adminApiKey) {
+      if (!headerKey || headerKey !== expectedKey) {
         return res.status(401).json({ error: "Unauthorized" });
       }
     }
-
-    const schoolSlug = req.params.school;
     const config = getConfig();
     const school = config.schools.find((item) => item.slug === schoolSlug);
 
@@ -376,6 +445,30 @@ app.get("/api/admin/:school/submissions/export", async (req, res) => {
       .split(",")
       .map((field) => field.trim())
       .filter(Boolean);
+
+    const allowedFields = new Set([
+      "id",
+      "created_at",
+      "updated_at",
+      "delivered_at",
+      "school_id",
+      "campus_id",
+      "program_id",
+      "first_name",
+      "last_name",
+      "email",
+      "phone",
+      "answers",
+      "metadata",
+      "status",
+      "idempotency_key",
+      "consented",
+      "consent_text_version",
+      "consent_timestamp",
+      "crm_lead_id",
+      "last_step_completed",
+      "created_from_step"
+    ]);
 
     const defaultFields = [
       "id",
@@ -394,23 +487,14 @@ app.get("/api/admin/:school/submissions/export", async (req, res) => {
       "consent_timestamp"
     ];
 
-    const selectedFields = fields.length ? fields : defaultFields;
+    const selectedFields =
+      fields.length > 0
+        ? fields.filter((field) => allowedFields.has(field))
+        : defaultFields;
+
+    const finalFields = selectedFields.length > 0 ? selectedFields : defaultFields;
 
     const { whereSql, values } = buildSubmissionFilters(req, school.id);
-
-    const result = await pool.query(
-      `
-        SELECT id, created_at, updated_at, delivered_at, school_id, campus_id, program_id,
-               first_name, last_name, email, phone, answers, metadata, status,
-               idempotency_key, consented, consent_text_version, consent_timestamp,
-               crm_lead_id, last_step_completed, created_from_step
-        FROM submissions
-        ${whereSql}
-        ORDER BY created_at DESC
-        LIMIT $${values.length + 1} OFFSET $${values.length + 2}
-      `,
-      [...values, limit, offset]
-    );
 
     const escapeCsv = (value: unknown) => {
       if (value === null || value === undefined) return "";
@@ -419,25 +503,70 @@ app.get("/api/admin/:school/submissions/export", async (req, res) => {
       return `"${escaped}"`;
     };
 
-    const header = selectedFields.join(",");
-    const rows = result.rows.map((row) => {
-      return selectedFields
-        .map((field) => {
-          const key = field.trim();
-          const value = row[key];
-          return escapeCsv(value);
-        })
-        .join(",");
-    });
-
-    const csv = [header, ...rows].join("\n");
-
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader(
       "Content-Disposition",
       `attachment; filename="${school.slug}-submissions.csv"`
     );
-    return res.send(csv);
+
+    res.write(`${finalFields.join(",")}\n`);
+
+    const chunkSize = 500;
+    let remaining = limit;
+    let chunkOffset = offset;
+    let exportedCount = 0;
+
+    while (remaining > 0) {
+      const chunkLimit = Math.min(chunkSize, remaining);
+      const result = await pool.query(
+        `
+          SELECT id, created_at, updated_at, delivered_at, school_id, campus_id, program_id,
+                 first_name, last_name, email, phone, answers, metadata, status,
+                 idempotency_key, consented, consent_text_version, consent_timestamp,
+                 crm_lead_id, last_step_completed, created_from_step
+          FROM submissions
+          ${whereSql}
+          ORDER BY created_at DESC
+          LIMIT $${values.length + 1} OFFSET $${values.length + 2}
+        `,
+        [...values, chunkLimit, chunkOffset]
+      );
+
+      if (result.rows.length === 0) break;
+
+      for (const row of result.rows) {
+        const line = finalFields
+          .map((field) => {
+            const value = row[field];
+            return escapeCsv(value);
+          })
+          .join(",");
+        res.write(`${line}\n`);
+      }
+
+      exportedCount += result.rows.length;
+      remaining -= result.rows.length;
+      chunkOffset += result.rows.length;
+
+      if (result.rows.length < chunkLimit) break;
+    }
+
+    await logAdminAudit(school.id, "export_submissions", {
+      fields: finalFields,
+      limit,
+      offset,
+      filters: {
+        q: req.query.q || null,
+        status: req.query.status || null,
+        programId: req.query.programId || null,
+        campusId: req.query.campusId || null,
+        from: req.query.from || null,
+        to: req.query.to || null
+      },
+      exportedCount
+    });
+
+    return res.end();
   } catch (error) {
     console.error("Admin submissions export error", error);
     return res.status(500).json({ error: "Internal server error" });

@@ -81,6 +81,11 @@ const worker = new Worker(
     const submissionId = job.data.submissionId as string;
     const jobType = job.name;
     const action = jobType === "create_lead" ? "create" : "update";
+    const stepIndex = jobType === "create_lead"
+      ? 1
+      : typeof job.data.stepIndex === "number"
+        ? job.data.stepIndex
+        : 0;
 
     if (jobType !== "create_lead" && jobType !== "update_lead") {
       throw new Error(`Unsupported job type: ${jobType}`);
@@ -100,6 +105,21 @@ const worker = new Worker(
 
     const submission = submissionResult.rows[0];
 
+    const dedupeResult = await pool.query(
+      `
+        SELECT 1
+        FROM delivery_attempts
+        WHERE submission_id = $1 AND job_type = $2 AND step_index = $3 AND status = 'delivered'
+        LIMIT 1
+      `,
+      [submissionId, jobType, stepIndex]
+    );
+
+    if (dedupeResult.rows.length > 0) {
+      console.log(`[${submissionId}] ${jobType} step ${stepIndex} already delivered, skipping`);
+      return { skipped: true };
+    }
+
     if (submission.status === "delivered" && jobType === "create_lead") {
       console.log(`[${submissionId}] Already delivered, skipping`);
       return { skipped: true };
@@ -112,9 +132,9 @@ const worker = new Worker(
 
     await pool.query(
       `INSERT INTO delivery_attempts
-        (id, submission_id, attempt_number, status, job_type, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $6)`,
-      [attemptId, submissionId, attemptNumber, "started", jobType, createdAt]
+        (id, submission_id, attempt_number, status, job_type, step_index, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
+      [attemptId, submissionId, attemptNumber, "started", jobType, stepIndex, createdAt]
     );
 
     const config = getConfig();
@@ -153,7 +173,7 @@ const worker = new Worker(
       idempotencyKey: submission.idempotency_key,
       action,
       crmLeadId: submission.crm_lead_id,
-      stepIndex: typeof job.data.stepIndex === "number" ? job.data.stepIndex : null,
+      stepIndex: stepIndex || null,
       schoolId: submission.school_id,
       campusId: submission.campus_id,
       programId: submission.program_id,
@@ -256,11 +276,24 @@ worker.on("failed", (job, error) => {
   console.error(`Delivery failed for ${job?.data?.submissionId}`, error?.message);
 });
 
-const server = http.createServer((_req, res) => {
+const server = http.createServer(async (_req, res) => {
   if (_req.url === "/worker/healthz") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: "ok" }));
     return;
+  }
+
+  if (_req.url === "/worker/metrics") {
+    try {
+      const counts = await deliveryQueue.getJobCounts("waiting", "active", "failed", "delayed", "completed");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", queue: counts }));
+      return;
+    } catch (error) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "error", error: (error as Error).message }));
+      return;
+    }
   }
 
   res.writeHead(404);

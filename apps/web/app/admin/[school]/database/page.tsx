@@ -2,6 +2,7 @@ import path from "path";
 import { loadConfig } from "@lead_lander/config-schema";
 import { DatabaseView } from "../DatabaseView";
 import "../styles.css";
+import { resolveAdminKey } from "../../lib/adminKeys";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export default async function AdminDatabase({ params }: { params: { school: stri
     process.env.ADMIN_API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     "http://localhost:4000";
+  const adminKey = resolveAdminKey(school.slug);
 
   return (
     <div className="admin-shell admin-official">
@@ -54,7 +56,7 @@ export default async function AdminDatabase({ params }: { params: { school: stri
         <DatabaseView
           schoolSlug={school.slug}
           apiBase={apiBase}
-          adminKey={process.env.ADMIN_API_KEY}
+          adminKey={adminKey}
           programs={programs.map((program) => ({ id: program.id, name: program.name }))}
           campuses={campuses.map((campus) => ({ id: campus.id, name: campus.name }))}
         />

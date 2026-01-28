@@ -1,6 +1,7 @@
 import path from "path";
 import { loadConfig } from "@lead_lander/config-schema";
 import "./styles.css";
+import { resolveAdminKey } from "../../lib/adminKeys";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +43,9 @@ export default async function AdminAccount({ params }: { params: { school: strin
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     "http://localhost:4000";
   const headers: Record<string, string> = {};
-  if (process.env.ADMIN_API_KEY) {
-    headers["x-admin-key"] = process.env.ADMIN_API_KEY;
+  const adminKey = resolveAdminKey(school.slug);
+  if (adminKey) {
+    headers["x-admin-key"] = adminKey;
   }
 
   let metrics: MetricsResponse | null = null;
