@@ -18,12 +18,11 @@ export default function AdminIndex() {
 
       <div className="admin-grid" style={{ marginTop: "24px" }}>
         <div className="admin-card">
-          <h3>Prototypes</h3>
-          <div className="admin-nav" style={{ marginTop: "12px" }}>
-            <a href="/admin/prototype-a">Prototype A · Control Center</a>
-            <a href="/admin/prototype-b">Prototype B · Ops Console</a>
-            <a href="/admin/prototype-c">Prototype C · Minimal Pro</a>
-          </div>
+          <h3>Dashboard guidance</h3>
+          <p className="admin-muted">
+            These dashboards are scoped per account. Each account pulls metrics for its own campuses and
+            programs only.
+          </p>
         </div>
       </div>
     </div>
