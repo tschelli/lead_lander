@@ -93,6 +93,127 @@ app.get("/healthz", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+app.get("/api/admin/:school/metrics", async (req, res) => {
+  try {
+    if (env.adminApiKey) {
+      const headerKey = req.get("x-admin-key");
+      if (!headerKey || headerKey !== env.adminApiKey) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+    }
+
+    const schoolSlug = req.params.school;
+    const config = getConfig();
+    const school = config.schools.find((item) => item.slug === schoolSlug);
+
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const now = new Date();
+    const fromParam = req.query.from ? new Date(String(req.query.from)) : null;
+    const toParam = req.query.to ? new Date(String(req.query.to)) : null;
+
+    const to = toParam && !Number.isNaN(toParam.getTime()) ? toParam : now;
+    const from = fromParam && !Number.isNaN(fromParam.getTime())
+      ? fromParam
+      : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const summaryResult = await pool.query(
+      `
+        SELECT
+          COUNT(*) AS leads,
+          SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) AS delivered,
+          SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+          SUM(CASE WHEN status = 'delivering' THEN 1 ELSE 0 END) AS delivering,
+          SUM(CASE WHEN status = 'received' THEN 1 ELSE 0 END) AS received,
+          MAX(COALESCE(last_step_completed, 0)) AS max_step
+        FROM submissions
+        WHERE school_id = $1 AND created_at >= $2 AND created_at < $3
+      `,
+      [school.id, from, to]
+    );
+
+    const stepsResult = await pool.query(
+      `
+        SELECT COALESCE(last_step_completed, 0) AS last_step_completed,
+               COUNT(*) AS count
+        FROM submissions
+        WHERE school_id = $1 AND created_at >= $2 AND created_at < $3
+        GROUP BY COALESCE(last_step_completed, 0)
+      `,
+      [school.id, from, to]
+    );
+
+    const perfResult = await pool.query(
+      `
+        SELECT campus_id, program_id,
+          COUNT(*) AS leads,
+          SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) AS delivered,
+          SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+        FROM submissions
+        WHERE school_id = $1 AND created_at >= $2 AND created_at < $3
+        GROUP BY campus_id, program_id
+        ORDER BY leads DESC
+        LIMIT 5
+      `,
+      [school.id, from, to]
+    );
+
+    const snapshotResult = await pool.query(
+      `
+        SELECT id, email, status, crm_lead_id, updated_at
+        FROM submissions
+        WHERE school_id = $1
+        ORDER BY updated_at DESC
+        LIMIT 5
+      `,
+      [school.id]
+    );
+
+    const summary = summaryResult.rows[0] || {};
+
+    return res.json({
+      school: {
+        id: school.id,
+        name: school.name,
+        slug: school.slug,
+        logoUrl: school.branding.logoUrl || null
+      },
+      period: { from: from.toISOString(), to: to.toISOString() },
+      summary: {
+        leads: Number(summary.leads || 0),
+        delivered: Number(summary.delivered || 0),
+        failed: Number(summary.failed || 0),
+        delivering: Number(summary.delivering || 0),
+        received: Number(summary.received || 0),
+        maxStep: Number(summary.max_step || 0)
+      },
+      steps: stepsResult.rows.map((row) => ({
+        step: Number(row.last_step_completed || 0),
+        count: Number(row.count || 0)
+      })),
+      performance: perfResult.rows.map((row) => ({
+        campusId: row.campus_id,
+        programId: row.program_id,
+        leads: Number(row.leads || 0),
+        delivered: Number(row.delivered || 0),
+        failed: Number(row.failed || 0)
+      })),
+      snapshots: snapshotResult.rows.map((row) => ({
+        id: row.id,
+        email: row.email,
+        status: row.status,
+        crmLeadId: row.crm_lead_id,
+        updatedAt: row.updated_at
+      }))
+    });
+  } catch (error) {
+    console.error("Admin metrics error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.post("/api/lead/start", async (req, res) => {
   try {
     const parseResult = StartSchema.safeParse(req.body);

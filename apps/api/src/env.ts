@@ -19,5 +19,6 @@ export const env = {
   honeypotField: process.env.HONEYPOT_FIELD || "website",
   queueName: process.env.DELIVERY_QUEUE_NAME || "lead_delivery",
   deliveryMaxAttempts: Number(process.env.DELIVERY_MAX_ATTEMPTS || 5),
-  deliveryBackoffMs: Number(process.env.DELIVERY_BACKOFF_MS || 10_000)
+  deliveryBackoffMs: Number(process.env.DELIVERY_BACKOFF_MS || 10_000),
+  adminApiKey: process.env.ADMIN_API_KEY || ""
 };

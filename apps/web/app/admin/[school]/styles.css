@@ -123,6 +123,62 @@
   margin-top: 12px;
 }
 
+.admin-builder {
+  margin-top: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+  background: #f9fbff;
+}
+
+.admin-builder__row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-builder__select,
+.admin-builder__input,
+.admin-builder__textarea {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  font-size: 0.9rem;
+}
+
+.admin-builder__textarea {
+  min-height: 120px;
+}
+
+.admin-builder__fields {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-builder__preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.admin-builder__preview pre {
+  margin: 0;
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  overflow-x: auto;
+}
+
+.admin-builder__actions {
+  display: grid;
+  gap: 10px;
+}
+
 @media (max-width: 900px) {
   .admin-official__header {
     flex-direction: column;

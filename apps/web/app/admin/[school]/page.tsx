@@ -1,38 +1,22 @@
 import path from "path";
 import { loadConfig } from "@lead_lander/config-schema";
-import { getPool } from "../../../lib/db";
 import "./styles.css";
+import { ConfigBuilder } from "./ConfigBuilder";
 
 export const dynamic = "force-dynamic";
 
-type SummaryRow = {
-  leads: string;
-  delivered: string;
-  failed: string;
-  delivering: string;
-  received: string;
-  max_step: number | null;
-};
-
-type StepRow = {
-  last_step_completed: number | null;
-  count: string;
-};
-
-type PerfRow = {
-  campus_id: string | null;
-  program_id: string;
-  leads: string;
-  delivered: string;
-  failed: string;
-};
-
-type SnapshotRow = {
-  id: string;
-  email: string;
-  status: string;
-  crm_lead_id: string | null;
-  updated_at: string;
+type MetricsResponse = {
+  summary: {
+    leads: number;
+    delivered: number;
+    failed: number;
+    delivering: number;
+    received: number;
+    maxStep: number;
+  };
+  steps: { step: number; count: number }[];
+  performance: { campusId: string | null; programId: string; leads: number; delivered: number; failed: number }[];
+  snapshots: { id: string; email: string; status: string; crmLeadId: string | null; updatedAt: string }[];
 };
 
 export default async function AdminAccount({ params }: { params: { school: string } }) {
@@ -54,91 +38,57 @@ export default async function AdminAccount({ params }: { params: { school: strin
   const campuses = config.campuses.filter((campus) => campus.schoolId === school.id);
   const programs = config.programs.filter((program) => program.schoolId === school.id);
 
-  const now = new Date();
-  const from = new Date(now);
-  from.setDate(now.getDate() - 30);
-
-  const pool = getPool();
-  let summary: SummaryRow | null = null;
-  let steps: StepRow[] = [];
-  let performance: PerfRow[] = [];
-  let snapshots: SnapshotRow[] = [];
-  let dbError: string | null = null;
-
-  if (pool) {
-    try {
-      const summaryResult = await pool.query<SummaryRow>(
-        `
-          SELECT
-            COUNT(*) AS leads,
-            SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) AS delivered,
-            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
-            SUM(CASE WHEN status = 'delivering' THEN 1 ELSE 0 END) AS delivering,
-            SUM(CASE WHEN status = 'received' THEN 1 ELSE 0 END) AS received,
-            MAX(COALESCE(last_step_completed, 0)) AS max_step
-          FROM submissions
-          WHERE school_id = $1 AND created_at >= $2 AND created_at < $3
-        `,
-        [school.id, from, now]
-      );
-      summary = summaryResult.rows[0];
-
-      const stepResult = await pool.query<StepRow>(
-        `
-          SELECT COALESCE(last_step_completed, 0) AS last_step_completed,
-                 COUNT(*) AS count
-          FROM submissions
-          WHERE school_id = $1 AND created_at >= $2 AND created_at < $3
-          GROUP BY COALESCE(last_step_completed, 0)
-        `,
-        [school.id, from, now]
-      );
-      steps = stepResult.rows;
-
-      const perfResult = await pool.query<PerfRow>(
-        `
-          SELECT campus_id, program_id,
-            COUNT(*) AS leads,
-            SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) AS delivered,
-            SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
-          FROM submissions
-          WHERE school_id = $1 AND created_at >= $2 AND created_at < $3
-          GROUP BY campus_id, program_id
-          ORDER BY leads DESC
-          LIMIT 5
-        `,
-        [school.id, from, now]
-      );
-      performance = perfResult.rows;
-
-      const snapshotResult = await pool.query<SnapshotRow>(
-        `
-          SELECT id, email, status, crm_lead_id, updated_at
-          FROM submissions
-          WHERE school_id = $1
-          ORDER BY updated_at DESC
-          LIMIT 5
-        `,
-        [school.id]
-      );
-      snapshots = snapshotResult.rows;
-    } catch (error) {
-      dbError = (error as Error).message;
-    }
-  } else {
-    dbError = "DATABASE_URL not configured";
+  const apiBase =
+    process.env.ADMIN_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:4000";
+  const headers: Record<string, string> = {};
+  if (process.env.ADMIN_API_KEY) {
+    headers["x-admin-key"] = process.env.ADMIN_API_KEY;
   }
 
-  const leads = Number(summary?.leads || 0);
-  const delivered = Number(summary?.delivered || 0);
-  const failed = Number(summary?.failed || 0);
-  const delivering = Number(summary?.delivering || 0);
-  const received = Number(summary?.received || 0);
-  const maxStep = Math.max(summary?.max_step || 0, 3);
+  let metrics: MetricsResponse | null = null;
+  let metricsError: string | null = null;
+
+  try {
+    const response = await fetch(`${apiBase}/api/admin/${school.slug}/metrics`, {
+      headers,
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || "Failed to load metrics");
+    }
+
+    metrics = (await response.json()) as MetricsResponse;
+  } catch (error) {
+    metricsError = (error as Error).message;
+  }
+
+  const summary = metrics?.summary || {
+    leads: 0,
+    delivered: 0,
+    failed: 0,
+    delivering: 0,
+    received: 0,
+    maxStep: 3
+  };
+
+  const steps = metrics?.steps || [];
+  const performance = metrics?.performance || [];
+  const snapshots = metrics?.snapshots || [];
+
+  const leads = summary.leads;
+  const delivered = summary.delivered;
+  const failed = summary.failed;
+  const delivering = summary.delivering;
+  const received = summary.received;
+  const maxStep = Math.max(summary.maxStep || 0, 3);
 
   const stepCounts = new Map<number, number>();
   steps.forEach((row) => {
-    stepCounts.set(Number(row.last_step_completed || 0), Number(row.count));
+    stepCounts.set(Number(row.step || 0), Number(row.count));
   });
 
   const countAtOrAbove = (step: number) => {
@@ -192,9 +142,9 @@ export default async function AdminAccount({ params }: { params: { school: strin
             <span className="admin-pill">{campuses.length} campuses</span>
             <span className="admin-pill">{programs.length} programs</span>
           </div>
-          {dbError && (
+          {metricsError && (
             <p className="admin-muted" style={{ marginTop: "8px" }}>
-              Metrics unavailable: {dbError}
+              Metrics unavailable: {metricsError}
             </p>
           )}
         </div>
@@ -297,19 +247,19 @@ export default async function AdminAccount({ params }: { params: { school: strin
                 </tr>
               )}
               {performance.map((row) => {
-                const campusName = row.campus_id
-                  ? campuses.find((campus) => campus.id === row.campus_id)?.name || row.campus_id
+                const campusName = row.campusId
+                  ? campuses.find((campus) => campus.id === row.campusId)?.name || row.campusId
                   : "Unspecified campus";
                 const programName =
-                  programs.find((program) => program.id === row.program_id)?.name || row.program_id;
+                  programs.find((program) => program.id === row.programId)?.name || row.programId;
 
                 return (
-                  <tr key={`${row.campus_id || "none"}-${row.program_id}`}>
+                  <tr key={`${row.campusId || "none"}-${row.programId}`}>
                     <td>{campusName}</td>
                     <td>{programName}</td>
-                    <td>{Number(row.leads).toLocaleString()}</td>
-                    <td>{Number(row.delivered).toLocaleString()}</td>
-                    <td>{Number(row.failed).toLocaleString()}</td>
+                    <td>{row.leads.toLocaleString()}</td>
+                    <td>{row.delivered.toLocaleString()}</td>
+                    <td>{row.failed.toLocaleString()}</td>
                   </tr>
                 );
               })}
@@ -326,6 +276,15 @@ export default async function AdminAccount({ params }: { params: { school: strin
               <button className="admin-official__ghost">Review</button>
             </div>
           ))}
+          <div style={{ marginTop: "16px" }}>
+            <ConfigBuilder
+              programs={programs.map((program) => ({
+                id: program.id,
+                name: program.name,
+                landingCopy: program.landingCopy
+              }))}
+            />
+          </div>
         </section>
       </div>
 
@@ -353,8 +312,8 @@ export default async function AdminAccount({ params }: { params: { school: strin
                 <td>{row.id.slice(0, 8)}</td>
                 <td>{row.email}</td>
                 <td>{row.status}</td>
-                <td>{row.crm_lead_id || "—"}</td>
-                <td>{new Date(row.updated_at).toLocaleString()}</td>
+                <td>{row.crmLeadId || "—"}</td>
+                <td>{new Date(row.updatedAt).toLocaleString()}</td>
               </tr>
             ))}
           </tbody>
