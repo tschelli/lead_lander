@@ -1,6 +1,7 @@
 import path from "path";
 import { loadConfig } from "@lead_lander/config-schema";
 import { ConfigBuilder } from "../ConfigBuilder";
+import "../styles.css";
 
 export const dynamic = "force-dynamic";
 

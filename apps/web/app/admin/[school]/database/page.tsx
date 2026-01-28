@@ -1,17 +1,9 @@
 import path from "path";
 import { loadConfig } from "@lead_lander/config-schema";
+import { DatabaseView } from "../DatabaseView";
+import "../styles.css";
 
 export const dynamic = "force-dynamic";
-
-type SubmissionRow = {
-  id: string;
-  email: string;
-  status: string;
-  crmLeadId: string | null;
-  programId: string;
-  campusId: string | null;
-  createdAt: string;
-};
 
 export default async function AdminDatabase({ params }: { params: { school: string } }) {
   const configDir = path.resolve(process.cwd(), "../../configs");
@@ -36,30 +28,6 @@ export default async function AdminDatabase({ params }: { params: { school: stri
     process.env.ADMIN_API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     "http://localhost:4000";
-  const headers: Record<string, string> = {};
-  if (process.env.ADMIN_API_KEY) {
-    headers["x-admin-key"] = process.env.ADMIN_API_KEY;
-  }
-
-  let rows: SubmissionRow[] = [];
-  let error: string | null = null;
-
-  try {
-    const response = await fetch(`${apiBase}/api/admin/${school.slug}/submissions?limit=50`, {
-      headers,
-      cache: "no-store"
-    });
-
-    if (!response.ok) {
-      const message = await response.text();
-      throw new Error(message || "Failed to load submissions");
-    }
-
-    const data = (await response.json()) as { rows: SubmissionRow[] };
-    rows = data.rows;
-  } catch (err) {
-    error = (err as Error).message;
-  }
 
   return (
     <div className="admin-shell admin-official">
@@ -83,45 +51,13 @@ export default async function AdminDatabase({ params }: { params: { school: stri
 
       <section className="admin-card">
         <h3>Submissions</h3>
-        {error && <p className="admin-muted">Unable to load submissions: {error}</p>}
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Email</th>
-              <th>Program</th>
-              <th>Campus</th>
-              <th>Status</th>
-              <th>CRM Lead</th>
-              <th>Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={7} className="admin-muted">No submissions found</td>
-              </tr>
-            )}
-            {rows.map((row) => {
-              const programName = programs.find((program) => program.id === row.programId)?.name || row.programId;
-              const campusName = row.campusId
-                ? campuses.find((campus) => campus.id === row.campusId)?.name || row.campusId
-                : "Unspecified campus";
-
-              return (
-                <tr key={row.id}>
-                  <td>{row.id.slice(0, 8)}</td>
-                  <td>{row.email}</td>
-                  <td>{programName}</td>
-                  <td>{campusName}</td>
-                  <td>{row.status}</td>
-                  <td>{row.crmLeadId || "—"}</td>
-                  <td>{new Date(row.createdAt).toLocaleString()}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <DatabaseView
+          schoolSlug={school.slug}
+          apiBase={apiBase}
+          adminKey={process.env.ADMIN_API_KEY}
+          programs={programs.map((program) => ({ id: program.id, name: program.name }))}
+          campuses={campuses.map((campus) => ({ id: campus.id, name: campus.name }))}
+        />
       </section>
     </div>
   );

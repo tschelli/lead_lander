@@ -89,6 +89,65 @@ function buildMetadata(
   };
 }
 
+function parseDateInput(value?: string) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function buildSubmissionFilters(req: express.Request, schoolId: string) {
+  const clauses: string[] = ["school_id = $1"];
+  const values: (string | number | Date)[] = [schoolId];
+
+  const pushValue = (value: string | number | Date) => {
+    values.push(value);
+    return `$${values.length}`;
+  };
+
+  const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
+  if (status) {
+    clauses.push(`status = ${pushValue(status)}`);
+  }
+
+  const programId = typeof req.query.programId === "string" ? req.query.programId.trim() : "";
+  if (programId) {
+    clauses.push(`program_id = ${pushValue(programId)}`);
+  }
+
+  const campusId = typeof req.query.campusId === "string" ? req.query.campusId.trim() : "";
+  if (campusId) {
+    if (campusId === "__null__") {
+      clauses.push("campus_id IS NULL");
+    } else {
+      clauses.push(`campus_id = ${pushValue(campusId)}`);
+    }
+  }
+
+  const search = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  if (search) {
+    const placeholder = pushValue(`%${search}%`);
+    clauses.push(
+      `(email ILIKE ${placeholder} OR phone ILIKE ${placeholder} OR first_name ILIKE ${placeholder} OR last_name ILIKE ${placeholder})`
+    );
+  }
+
+  const from = parseDateInput(typeof req.query.from === "string" ? req.query.from : undefined);
+  if (from) {
+    clauses.push(`created_at >= ${pushValue(from)}`);
+  }
+
+  const to = parseDateInput(typeof req.query.to === "string" ? req.query.to : undefined);
+  if (to) {
+    const end = new Date(to);
+    end.setDate(end.getDate() + 1);
+    clauses.push(`created_at < ${pushValue(end)}`);
+  }
+
+  const whereSql = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+
+  return { whereSql, values };
+}
+
 app.get("/healthz", (_req, res) => {
   res.json({ status: "ok" });
 });
@@ -231,35 +290,156 @@ app.get("/api/admin/:school/submissions", async (req, res) => {
       return res.status(404).json({ error: "School not found" });
     }
 
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const limit = Math.min(Number(req.query.limit) || 25, 200);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
+
+    const { whereSql, values } = buildSubmissionFilters(req, school.id);
+
+    const countResult = await pool.query(
+      `
+        SELECT COUNT(*)::int AS total
+        FROM submissions
+        ${whereSql}
+      `,
+      values
+    );
 
     const result = await pool.query(
       `
-        SELECT id, email, status, crm_lead_id, program_id, campus_id, created_at
+        SELECT id, created_at, updated_at, delivered_at, school_id, campus_id, program_id,
+               first_name, last_name, email, phone, answers, metadata, status,
+               idempotency_key, consented, consent_text_version, consent_timestamp,
+               crm_lead_id, last_step_completed, created_from_step
         FROM submissions
-        WHERE school_id = $1
+        ${whereSql}
         ORDER BY created_at DESC
-        LIMIT $2 OFFSET $3
+        LIMIT $${values.length + 1} OFFSET $${values.length + 2}
       `,
-      [school.id, limit, offset]
+      [...values, limit, offset]
     );
 
     return res.json({
       rows: result.rows.map((row) => ({
         id: row.id,
-        email: row.email,
-        status: row.status,
-        crmLeadId: row.crm_lead_id,
-        programId: row.program_id,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        deliveredAt: row.delivered_at,
+        schoolId: row.school_id,
         campusId: row.campus_id,
-        createdAt: row.created_at
+        programId: row.program_id,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        email: row.email,
+        phone: row.phone,
+        answers: row.answers,
+        metadata: row.metadata,
+        status: row.status,
+        idempotencyKey: row.idempotency_key,
+        consented: row.consented,
+        consentTextVersion: row.consent_text_version,
+        consentTimestamp: row.consent_timestamp,
+        crmLeadId: row.crm_lead_id,
+        lastStepCompleted: row.last_step_completed,
+        createdFromStep: row.created_from_step
       })),
+      total: Number(countResult.rows[0]?.total || 0),
       limit,
       offset
     });
   } catch (error) {
     console.error("Admin submissions error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/admin/:school/submissions/export", async (req, res) => {
+  try {
+    if (env.adminApiKey) {
+      const headerKey = req.get("x-admin-key");
+      if (!headerKey || headerKey !== env.adminApiKey) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+    }
+
+    const schoolSlug = req.params.school;
+    const config = getConfig();
+    const school = config.schools.find((item) => item.slug === schoolSlug);
+
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const limit = Math.min(Number(req.query.limit) || 1000, 5000);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const fieldsRaw = typeof req.query.fields === "string" ? req.query.fields : "";
+    const fields = fieldsRaw
+      .split(",")
+      .map((field) => field.trim())
+      .filter(Boolean);
+
+    const defaultFields = [
+      "id",
+      "created_at",
+      "status",
+      "first_name",
+      "last_name",
+      "email",
+      "phone",
+      "program_id",
+      "campus_id",
+      "crm_lead_id",
+      "last_step_completed",
+      "consented",
+      "consent_text_version",
+      "consent_timestamp"
+    ];
+
+    const selectedFields = fields.length ? fields : defaultFields;
+
+    const { whereSql, values } = buildSubmissionFilters(req, school.id);
+
+    const result = await pool.query(
+      `
+        SELECT id, created_at, updated_at, delivered_at, school_id, campus_id, program_id,
+               first_name, last_name, email, phone, answers, metadata, status,
+               idempotency_key, consented, consent_text_version, consent_timestamp,
+               crm_lead_id, last_step_completed, created_from_step
+        FROM submissions
+        ${whereSql}
+        ORDER BY created_at DESC
+        LIMIT $${values.length + 1} OFFSET $${values.length + 2}
+      `,
+      [...values, limit, offset]
+    );
+
+    const escapeCsv = (value: unknown) => {
+      if (value === null || value === undefined) return "";
+      const text = typeof value === "string" ? value : JSON.stringify(value);
+      const escaped = text.replace(/"/g, "\"\"");
+      return `"${escaped}"`;
+    };
+
+    const header = selectedFields.join(",");
+    const rows = result.rows.map((row) => {
+      return selectedFields
+        .map((field) => {
+          const key = field.trim();
+          const value = row[key];
+          return escapeCsv(value);
+        })
+        .join(",");
+    });
+
+    const csv = [header, ...rows].join("\n");
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${school.slug}-submissions.csv"`
+    );
+    return res.send(csv);
+  } catch (error) {
+    console.error("Admin submissions export error", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
