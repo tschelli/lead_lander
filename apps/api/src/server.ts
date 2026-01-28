@@ -18,6 +18,7 @@ import {
   resetPasswordWithToken,
   verifySessionToken
 } from "./auth";
+import { authorizeAdminAccess, type AuthContext, type UserRole } from "./authz";
 import { resolveEntitiesByIds } from "@lead_lander/config-schema";
 
 const app = express();
@@ -49,6 +50,53 @@ const AuthResetSchema = z.object({
   token: z.string().min(1),
   password: z.string().min(8)
 });
+
+async function loadAuthContext(req: express.Request): Promise<AuthContext | null> {
+  const token = req.cookies?.[env.authCookieName];
+  if (!token) return null;
+
+  const session = verifySessionToken(token);
+  if (!session) return null;
+
+  const user = await authRepo.findUserById(session.userId);
+  if (!user) return null;
+
+  const rolesResult = await pool.query(
+    "SELECT role, school_id FROM user_roles WHERE user_id = $1",
+    [user.id]
+  );
+
+  const roles = rolesResult.rows.map((row) => ({
+    role: row.role,
+    schoolId: row.school_id ?? null
+  })) as UserRole[];
+
+  return { user, roles };
+}
+
+async function attachAuthContext(req: express.Request, res: express.Response, next: express.NextFunction) {
+  try {
+    res.locals.auth = await loadAuthContext(req);
+  } catch (error) {
+    console.error("Auth context error", error);
+    res.locals.auth = null;
+  }
+  next();
+}
+
+function requireAdminScope(auth: AuthContext | null, schoolId: string) {
+  if (!auth) {
+    return { ok: false as const, status: 401, error: "Unauthorized" };
+  }
+
+  if (!authorizeAdminAccess(auth.roles, schoolId)) {
+    return { ok: false as const, status: 403, error: "Forbidden" };
+  }
+
+  return { ok: true as const };
+}
+
+app.use("/api/admin", attachAuthContext);
 
 const SubmitSchema = z.object({
   firstName: z.string().min(1),
@@ -361,19 +409,17 @@ app.get("/healthz", (_req, res) => {
 app.get("/api/admin/:school/metrics", async (req, res) => {
   try {
     const schoolSlug = req.params.school;
-    const expectedKey = resolveAdminKey(schoolSlug);
-
-    if (expectedKey) {
-      const headerKey = req.get("x-admin-key");
-      if (!headerKey || headerKey !== expectedKey) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-    }
+    const auth = res.locals.auth as AuthContext | null;
     const config = getConfig();
     const school = config.schools.find((item) => item.slug === schoolSlug);
 
     if (!school) {
       return res.status(404).json({ error: "School not found" });
+    }
+
+    const authCheck = requireAdminScope(auth, school.id);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
     const now = new Date();
@@ -483,19 +529,17 @@ app.get("/api/admin/:school/metrics", async (req, res) => {
 app.get("/api/admin/:school/submissions", async (req, res) => {
   try {
     const schoolSlug = req.params.school;
-    const expectedKey = resolveAdminKey(schoolSlug);
-
-    if (expectedKey) {
-      const headerKey = req.get("x-admin-key");
-      if (!headerKey || headerKey !== expectedKey) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-    }
+    const auth = res.locals.auth as AuthContext | null;
     const config = getConfig();
     const school = config.schools.find((item) => item.slug === schoolSlug);
 
     if (!school) {
       return res.status(404).json({ error: "School not found" });
+    }
+
+    const authCheck = requireAdminScope(auth, school.id);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
     const limit = Math.min(Number(req.query.limit) || 25, 200);
@@ -563,19 +607,17 @@ app.get("/api/admin/:school/submissions", async (req, res) => {
 app.get("/api/admin/:school/submissions/export", async (req, res) => {
   try {
     const schoolSlug = req.params.school;
-    const expectedKey = resolveAdminKey(schoolSlug);
-
-    if (expectedKey) {
-      const headerKey = req.get("x-admin-key");
-      if (!headerKey || headerKey !== expectedKey) {
-        return res.status(401).json({ error: "Unauthorized" });
-      }
-    }
+    const auth = res.locals.auth as AuthContext | null;
     const config = getConfig();
     const school = config.schools.find((item) => item.slug === schoolSlug);
 
     if (!school) {
       return res.status(404).json({ error: "School not found" });
+    }
+
+    const authCheck = requireAdminScope(auth, school.id);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
     const limit = Math.min(Number(req.query.limit) || 1000, 5000);
