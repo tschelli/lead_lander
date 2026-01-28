@@ -1,8 +1,8 @@
 import { loadConfig } from "@lead_lander/config-schema";
 import { DatabaseView } from "../DatabaseView";
 import "../styles.css";
-import { resolveAdminKey } from "../../../lib/adminKeys";
-import { resolveConfigDir } from "../../../lib/configDir";
+import { resolveAdminKey } from "../../../../lib/adminKeys";
+import { resolveConfigDir } from "../../../../lib/configDir";
 
 export const dynamic = "force-dynamic";
 

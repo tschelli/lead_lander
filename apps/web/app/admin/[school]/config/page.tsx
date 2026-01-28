@@ -1,7 +1,7 @@
 import { loadConfig } from "@lead_lander/config-schema";
 import { ConfigBuilder } from "../ConfigBuilder";
 import "../styles.css";
-import { resolveConfigDir } from "../../../lib/configDir";
+import { resolveConfigDir } from "../../../../lib/configDir";
 
 export const dynamic = "force-dynamic";
 
