@@ -26,6 +26,7 @@
     "@types/cors": "^2.8.17",
     "@types/node": "^20.11.30",
     "@types/pg": "^8.11.6",
+    "@types/ua-parser-js": "^0.7.39",
     "@types/uuid": "^9.0.8",
     "typescript": "^5.5.4",
     "tsx": "^4.7.1",
