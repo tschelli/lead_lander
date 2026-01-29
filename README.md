@@ -153,6 +153,12 @@ See `.env.example` for defaults. `CONFIG_DIR` is resolved from each app's workin
 ### Admin dashboard env vars (web)
 
 - `ADMIN_API_BASE_URL` (web): Base URL for API requests (e.g. CloudFront domain).
+- `ADMIN_API_PROXY_TARGET` (web): Proxy target for `/api/*` rewrites (use CloudFront when you do not own a domain).
+
+### Admin auth cookie env vars (api)
+
+- `AUTH_COOKIE_DOMAIN` (api): Optional cookie domain (e.g. `.example.com`).
+- `AUTH_COOKIE_SAMESITE` (api): `lax` (default), `strict`, or `none`. Use `none` only if you must allow cross-site cookies.
 
 ## Deployment (AWS + Vercel)
 

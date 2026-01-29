@@ -24,6 +24,8 @@ export const env = {
   authSessionTtlDays: Number(process.env.AUTH_SESSION_TTL_DAYS || 7),
   authResetTokenTtlMinutes: Number(process.env.AUTH_RESET_TTL_MINUTES || 60),
   authCookieName: process.env.AUTH_COOKIE_NAME || "session",
+  authCookieDomain: process.env.AUTH_COOKIE_DOMAIN || "",
+  authCookieSameSite: process.env.AUTH_COOKIE_SAMESITE || "lax",
   authCookieSecure: process.env.AUTH_COOKIE_SECURE === "true",
   corsOrigins: (process.env.CORS_ORIGINS || "")
     .split(",")

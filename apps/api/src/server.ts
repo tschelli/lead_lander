@@ -307,14 +307,34 @@ function buildSubmissionFilters(req: express.Request, schoolId: string) {
   return { whereSql, values };
 }
 
+function normalizeSameSite(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "none") return "none" as const;
+  if (normalized === "strict") return "strict" as const;
+  return "lax" as const;
+}
+
 function getAuthCookieOptions() {
-  const secure = env.authCookieSecure || process.env.NODE_ENV === "production";
-  return {
+  const sameSite = normalizeSameSite(env.authCookieSameSite || "lax");
+  const secure = env.authCookieSecure || process.env.NODE_ENV === "production" || sameSite === "none";
+  const options: {
+    httpOnly: true;
+    sameSite: "lax" | "strict" | "none";
+    secure: boolean;
+    path: "/";
+    domain?: string;
+  } = {
     httpOnly: true,
-    sameSite: "lax" as const,
+    sameSite,
     secure,
     path: "/"
   };
+
+  if (env.authCookieDomain) {
+    options.domain = env.authCookieDomain;
+  }
+
+  return options;
 }
 
 app.post("/api/auth/login", async (req, res) => {
