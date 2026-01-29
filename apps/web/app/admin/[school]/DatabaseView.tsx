@@ -151,6 +151,12 @@ export function DatabaseView({ schoolSlug, apiBase, programs, campuses }: Databa
       cache: "no-store"
     })
       .then(async (response) => {
+        if (response.status === 401) {
+          throw new Error("unauthorized");
+        }
+        if (response.status === 403) {
+          throw new Error("forbidden");
+        }
         if (!response.ok) {
           const message = await response.text();
           throw new Error(message || "Failed to load submissions");
@@ -164,6 +170,14 @@ export function DatabaseView({ schoolSlug, apiBase, programs, campuses }: Databa
       })
       .catch((err: Error) => {
         if (!active) return;
+        if (err.message === "unauthorized") {
+          setError("Please sign in to view submissions.");
+          return;
+        }
+        if (err.message === "forbidden") {
+          setError("You do not have access to this school.");
+          return;
+        }
         setError(err.message);
       })
       .finally(() => {

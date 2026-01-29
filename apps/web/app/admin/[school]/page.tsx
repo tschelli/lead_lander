@@ -1,5 +1,6 @@
 import { loadConfig } from "@lead_lander/config-schema";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import "./styles.css";
 import { resolveConfigDir } from "../../../lib/configDir";
 
@@ -54,6 +55,10 @@ export default async function AdminAccount({ params }: { params: { school: strin
       headers: authHeaders,
       cache: "no-store"
     });
+
+    if (response.status === 401) {
+      redirect("/admin/login");
+    }
 
     if (!response.ok) {
       const message = await response.text();

@@ -130,6 +130,27 @@
   color: rgba(17, 24, 39, 0.6);
 }
 
+.admin-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.admin-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.admin-form input,
+.admin-form select {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  font-size: 0.95rem;
+}
+
 .admin-db {
   display: grid;
   gap: 20px;
