@@ -1,6 +1,5 @@
 import { loadConfig } from "@lead_lander/config-schema";
 import "./styles.css";
-import { resolveAdminKey } from "../../../lib/adminKeys";
 import { resolveConfigDir } from "../../../lib/configDir";
 
 export const dynamic = "force-dynamic";
@@ -42,16 +41,13 @@ export default async function AdminAccount({ params }: { params: { school: strin
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     "http://localhost:4000";
   const headers: Record<string, string> = {};
-  const adminKey = resolveAdminKey(school.slug);
-  if (adminKey) {
-    headers["x-admin-key"] = adminKey;
-  }
 
   let metrics: MetricsResponse | null = null;
   let metricsError: string | null = null;
 
   try {
     const response = await fetch(`${apiBase}/api/admin/${school.slug}/metrics`, {
+      credentials: "include",
       headers,
       cache: "no-store"
     });

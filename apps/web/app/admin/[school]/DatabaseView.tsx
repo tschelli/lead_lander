@@ -71,7 +71,6 @@ type SubmissionRow = {
 type DatabaseViewProps = {
   schoolSlug: string;
   apiBase: string;
-  adminKey?: string;
   programs: { id: string; name: string }[];
   campuses: { id: string; name: string }[];
 };
@@ -108,7 +107,7 @@ function formatValue(value: unknown) {
   return JSON.stringify(value, null, 2);
 }
 
-export function DatabaseView({ schoolSlug, apiBase, adminKey, programs, campuses }: DatabaseViewProps) {
+export function DatabaseView({ schoolSlug, apiBase, programs, campuses }: DatabaseViewProps) {
   const [filters, setFilters] = useState<FilterState>(emptyFilters);
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(emptyFilters);
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
@@ -123,11 +122,7 @@ export function DatabaseView({ schoolSlug, apiBase, adminKey, programs, campuses
   const [exportScope, setExportScope] = useState<"page" | "filtered">("page");
   const [exportFields, setExportFields] = useState<Set<string>>(new Set(DEFAULT_EXPORT_FIELDS));
 
-  const headers = useMemo(() => {
-    const result: Record<string, string> = {};
-    if (adminKey) result["x-admin-key"] = adminKey;
-    return result;
-  }, [adminKey]);
+  const headers = useMemo(() => ({} as Record<string, string>), []);
 
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -152,6 +147,7 @@ export function DatabaseView({ schoolSlug, apiBase, adminKey, programs, campuses
 
     fetch(`${apiBase}/api/admin/${schoolSlug}/submissions?${queryParams.toString()}`, {
       headers,
+      credentials: "include",
       cache: "no-store"
     })
       .then(async (response) => {
@@ -226,6 +222,7 @@ export function DatabaseView({ schoolSlug, apiBase, adminKey, programs, campuses
       `${apiBase}/api/admin/${schoolSlug}/submissions/export?${params.toString()}`,
       {
         headers,
+        credentials: "include",
         cache: "no-store"
       }
     );
