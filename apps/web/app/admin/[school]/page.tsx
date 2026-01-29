@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import "./styles.css";
 import { resolveConfigDir } from "../../../lib/configDir";
+import { hasSessionCookie } from "../../../lib/authCookies";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,7 @@ export default async function AdminAccount({ params }: { params: { school: strin
     "http://localhost:4000";
   const requestHeaders = headers();
   const cookie = requestHeaders.get("cookie");
-  if (!cookie) {
+  if (!hasSessionCookie(cookie)) {
     redirect(`/admin/${school.slug}/login`);
   }
   const authHeaders: Record<string, string> = cookie ? { cookie } : {};

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { DatabaseView } from "../DatabaseView";
 import "../styles.css";
 import { resolveConfigDir } from "../../../../lib/configDir";
+import { hasSessionCookie } from "../../../../lib/authCookies";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function AdminDatabase({ params }: { params: { school: stri
     "http://localhost:4000";
   const requestHeaders = headers();
   const cookie = requestHeaders.get("cookie");
-  if (!cookie) {
+  if (!hasSessionCookie(cookie)) {
     redirect(`/admin/${school.slug}/login`);
   }
   return (

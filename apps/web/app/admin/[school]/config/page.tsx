@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { ConfigBuilder } from "../ConfigBuilder";
 import "../styles.css";
 import { resolveConfigDir } from "../../../../lib/configDir";
+import { hasSessionCookie } from "../../../../lib/authCookies";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ export default function AdminConfig({ params }: { params: { school: string } }) 
   const programs = config.programs.filter((program) => program.schoolId === school.id);
   const requestHeaders = headers();
   const cookie = requestHeaders.get("cookie");
-  if (!cookie) {
+  if (!hasSessionCookie(cookie)) {
     redirect(`/admin/${school.slug}/login`);
   }
 
