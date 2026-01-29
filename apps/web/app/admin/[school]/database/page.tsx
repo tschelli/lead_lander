@@ -1,4 +1,6 @@
 import { loadConfig } from "@lead_lander/config-schema";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { DatabaseView } from "../DatabaseView";
 import "../styles.css";
 import { resolveConfigDir } from "../../../../lib/configDir";
@@ -27,6 +29,11 @@ export default async function AdminDatabase({ params }: { params: { school: stri
     process.env.ADMIN_API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     "http://localhost:4000";
+  const requestHeaders = headers();
+  const cookie = requestHeaders.get("cookie");
+  if (!cookie) {
+    redirect(`/admin/${school.slug}/login`);
+  }
   return (
     <div className="admin-shell admin-official">
       <header className="admin-official__header">

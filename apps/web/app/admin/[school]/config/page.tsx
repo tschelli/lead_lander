@@ -1,4 +1,6 @@
 import { loadConfig } from "@lead_lander/config-schema";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { ConfigBuilder } from "../ConfigBuilder";
 import "../styles.css";
 import { resolveConfigDir } from "../../../../lib/configDir";
@@ -21,6 +23,11 @@ export default function AdminConfig({ params }: { params: { school: string } }) 
   }
 
   const programs = config.programs.filter((program) => program.schoolId === school.id);
+  const requestHeaders = headers();
+  const cookie = requestHeaders.get("cookie");
+  if (!cookie) {
+    redirect(`/admin/${school.slug}/login`);
+  }
 
   return (
     <div className="admin-shell admin-official">

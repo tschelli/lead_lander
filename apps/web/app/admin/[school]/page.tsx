@@ -44,6 +44,9 @@ export default async function AdminAccount({ params }: { params: { school: strin
     "http://localhost:4000";
   const requestHeaders = headers();
   const cookie = requestHeaders.get("cookie");
+  if (!cookie) {
+    redirect(`/admin/${school.slug}/login`);
+  }
   const authHeaders: Record<string, string> = cookie ? { cookie } : {};
 
   let metrics: MetricsResponse | null = null;
