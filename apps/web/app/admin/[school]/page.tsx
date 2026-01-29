@@ -57,7 +57,7 @@ export default async function AdminAccount({ params }: { params: { school: strin
     });
 
     if (response.status === 401) {
-      redirect("/admin/login");
+      redirect(`/admin/${school.slug}/login`);
     }
 
     if (!response.ok) {
