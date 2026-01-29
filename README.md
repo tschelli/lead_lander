@@ -230,6 +230,7 @@ API-only:
 - `PORT=4000`
 - `RATE_LIMIT_MAX=30`
 - `RATE_LIMIT_WINDOW_MS=60000`
+- `TRUST_PROXY=1` (set to `2` for CloudFront → ALB → ECS)
 
 Worker-only:
 - `WORKER_PORT=5005`
@@ -247,7 +248,7 @@ Create a CloudFront distribution pointing to the ALB:
 - **Behavior**: `/api/*`
   - Allowed methods: GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE
   - Cache policy: `CachingDisabled`
-  - Origin request policy: `Managed-AllViewer` (required to forward `x-admin-key`)
+  - Origin request policy: `Managed-AllViewer` (required to forward cookies/headers)
   - Response headers policy: `Managed-CORS-With-Preflight`
 
 If you update behaviors, invalidate `/api/*`.

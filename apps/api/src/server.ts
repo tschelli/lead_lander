@@ -23,6 +23,19 @@ import { getAllowedSchools } from "./tenantScope";
 import { resolveEntitiesByIds } from "@lead_lander/config-schema";
 
 const app = express();
+
+function parseTrustProxy(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return false;
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+  if (/^\d+$/.test(normalized)) return Number(normalized);
+  return value;
+}
+
+if (env.trustProxy) {
+  app.set("trust proxy", parseTrustProxy(env.trustProxy));
+}
 app.use(express.json({ limit: "1mb" }));
 const normalizeOrigin = (origin: string) => {
   try {

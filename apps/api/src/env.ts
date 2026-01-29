@@ -27,6 +27,7 @@ export const env = {
   authCookieDomain: process.env.AUTH_COOKIE_DOMAIN || "",
   authCookieSameSite: process.env.AUTH_COOKIE_SAMESITE || "lax",
   authCookieSecure: process.env.AUTH_COOKIE_SECURE === "true",
+  trustProxy: process.env.TRUST_PROXY || "",
   corsOrigins: (process.env.CORS_ORIGINS || "")
     .split(",")
     .map((origin) => origin.trim())
