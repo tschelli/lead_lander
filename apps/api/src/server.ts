@@ -24,7 +24,23 @@ import { resolveEntitiesByIds } from "@lead_lander/config-schema";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
-app.use(cors());
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+      if (env.corsOrigins.length === 0) {
+        return callback(new Error("CORS origin not allowed"));
+      }
+      if (env.corsOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("CORS origin not allowed"));
+    },
+    credentials: true
+  })
+);
 app.use(cookieParser());
 
 const limiter = rateLimit({
