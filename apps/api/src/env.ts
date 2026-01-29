@@ -20,7 +20,6 @@ export const env = {
   queueName: process.env.DELIVERY_QUEUE_NAME || "lead_delivery",
   deliveryMaxAttempts: Number(process.env.DELIVERY_MAX_ATTEMPTS || 5),
   deliveryBackoffMs: Number(process.env.DELIVERY_BACKOFF_MS || 10_000),
-  adminApiKey: process.env.ADMIN_API_KEY || "",
   authJwtSecret: process.env.AUTH_JWT_SECRET || "dev-insecure-change-me",
   authSessionTtlDays: Number(process.env.AUTH_SESSION_TTL_DAYS || 7),
   authResetTokenTtlMinutes: Number(process.env.AUTH_RESET_TTL_MINUTES || 60),

@@ -24,6 +24,39 @@ import { resolveEntitiesByIds } from "@lead_lander/config-schema";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
+const normalizeOrigin = (origin: string) => {
+  try {
+    const url = new URL(origin);
+    return { origin: url.origin.toLowerCase(), host: url.hostname.toLowerCase() };
+  } catch {
+    return { origin: origin.toLowerCase(), host: "" };
+  }
+};
+
+const isAllowedOrigin = (origin: string) => {
+  if (env.corsOrigins.length === 0) {
+    return false;
+  }
+
+  const { origin: normalizedOrigin, host } = normalizeOrigin(origin);
+
+  return env.corsOrigins.some((allowedRaw) => {
+    const allowed = allowedRaw.toLowerCase();
+    if (!allowed) return false;
+    if (allowed === "*") return true;
+    if (allowed.startsWith("*.")) {
+      return host.endsWith(allowed.slice(1));
+    }
+    if (allowed.startsWith(".")) {
+      return host.endsWith(allowed);
+    }
+    if (allowed.startsWith("http://") || allowed.startsWith("https://")) {
+      return normalizedOrigin === allowed;
+    }
+    return host === allowed;
+  });
+};
+
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -33,7 +66,7 @@ app.use(
       if (env.corsOrigins.length === 0) {
         return callback(new Error("CORS origin not allowed"));
       }
-      if (env.corsOrigins.includes(origin)) {
+      if (isAllowedOrigin(origin)) {
         return callback(null, true);
       }
       return callback(new Error("CORS origin not allowed"));

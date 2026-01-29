@@ -106,7 +106,7 @@ Dashboard routes:
 - `/admin/{school_slug}/database` – read-only submissions table
 - `/admin/{school_slug}/config` – config builder draft UI
 
-Admin API endpoints (protected by `x-admin-key` when `ADMIN_API_KEY` is set in the API):
+Admin API endpoints (require an authenticated admin session cookie):
 - `GET /api/admin/:school/metrics`
 - `GET /api/admin/:school/submissions?limit=50&offset=0`
 
@@ -150,10 +150,9 @@ Includes config validation and idempotency unit tests.
 
 See `.env.example` for defaults. `CONFIG_DIR` is resolved from each app's working directory (default `../../configs`). Secrets (CRM webhook token, SMTP creds) should be provided via env vars.
 
-### Admin dashboard env vars (web + api)
+### Admin dashboard env vars (web)
 
 - `ADMIN_API_BASE_URL` (web): Base URL for API requests (e.g. CloudFront domain).
-- `ADMIN_API_KEY` (web + api): Shared key passed as `x-admin-key`.
 
 ## Deployment (AWS + Vercel)
 
@@ -178,7 +177,6 @@ Below is a detailed step-by-step that mirrors the current production setup.
 6. **Environment variables** (Project → Settings → Environment Variables):
    - `NEXT_PUBLIC_API_BASE_URL` = `https://<cloudfront-domain>`
    - `ADMIN_API_BASE_URL` = `https://<cloudfront-domain>` (for admin dashboard)
-   - `ADMIN_API_KEY` = `<shared-admin-key>`
 
 After a push, Vercel auto-deploys the web app.
 

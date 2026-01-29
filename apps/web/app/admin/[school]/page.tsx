@@ -1,4 +1,5 @@
 import { loadConfig } from "@lead_lander/config-schema";
+import { headers } from "next/headers";
 import "./styles.css";
 import { resolveConfigDir } from "../../../lib/configDir";
 
@@ -40,7 +41,9 @@ export default async function AdminAccount({ params }: { params: { school: strin
     process.env.ADMIN_API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     "http://localhost:4000";
-  const headers: Record<string, string> = {};
+  const requestHeaders = headers();
+  const cookie = requestHeaders.get("cookie");
+  const authHeaders: Record<string, string> = cookie ? { cookie } : {};
 
   let metrics: MetricsResponse | null = null;
   let metricsError: string | null = null;
@@ -48,7 +51,7 @@ export default async function AdminAccount({ params }: { params: { school: strin
   try {
     const response = await fetch(`${apiBase}/api/admin/${school.slug}/metrics`, {
       credentials: "include",
-      headers,
+      headers: authHeaders,
       cache: "no-store"
     });
 
