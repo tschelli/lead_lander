@@ -1,5 +1,6 @@
 schools:
 - id: school_northwood
+  clientId: client_northwood
   slug: northwood-tech
   name: Northwood Technical Institute
   branding:

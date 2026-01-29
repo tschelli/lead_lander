@@ -1,5 +1,6 @@
 schools:
 - id: school_asher
+  clientId: client_asher
   slug: asher-college
   name: Asher College
   branding:

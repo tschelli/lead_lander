@@ -19,17 +19,35 @@ export type AuthContext = {
   roles: UserRole[];
 };
 
-export function authorizeAdminAccess(roles: UserRole[], schoolId?: string | null) {
+export function authorizeAdminAccess(input: {
+  roles: UserRole[];
+  schoolId?: string | null;
+  schoolClientId?: string | null;
+  userClientId?: string | null;
+}) {
+  const { roles, schoolId, schoolClientId, userClientId } = input;
   if (roles.some((role) => role.role === Roles.superAdmin || role.role === Roles.clientAdmin)) {
-    return true;
+    if (roles.some((role) => role.role === Roles.superAdmin)) {
+      return true;
+    }
+
+    return Boolean(userClientId && schoolClientId && userClientId === schoolClientId);
   }
 
   if (!schoolId) {
     return false;
   }
 
-  return roles.some(
+  const hasSchoolRole = roles.some(
     (role) =>
       (role.role === Roles.schoolAdmin || role.role === Roles.staff) && role.schoolId === schoolId
   );
+
+  if (!hasSchoolRole) return false;
+
+  if (userClientId && schoolClientId && userClientId !== schoolClientId) {
+    return false;
+  }
+
+  return true;
 }

@@ -8,6 +8,7 @@ export type AuthUser = {
   email: string;
   passwordHash: string;
   emailVerified: boolean;
+  clientId: string | null;
 };
 
 export type PasswordResetToken = {

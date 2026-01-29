@@ -18,7 +18,8 @@ import {
   resetPasswordWithToken,
   verifySessionToken
 } from "./auth";
-import { authorizeAdminAccess, type AuthContext, type UserRole } from "./authz";
+import { type AuthContext, type UserRole } from "./authz";
+import { getAllowedSchools } from "./tenantScope";
 import { resolveEntitiesByIds } from "@lead_lander/config-schema";
 
 const app = express();
@@ -84,12 +85,17 @@ async function attachAuthContext(req: express.Request, res: express.Response, ne
   next();
 }
 
-function requireAdminScope(auth: AuthContext | null, schoolId: string) {
+function requireAdminScope(
+  auth: AuthContext | null,
+  config: ReturnType<typeof getConfig>,
+  school: { id: string }
+) {
   if (!auth) {
     return { ok: false as const, status: 401, error: "Unauthorized" };
   }
 
-  if (!authorizeAdminAccess(auth.roles, schoolId)) {
+  const allowed = getAllowedSchools(auth, config);
+  if (!allowed.some((item) => item.id === school.id)) {
     return { ok: false as const, status: 403, error: "Forbidden" };
   }
 
@@ -417,7 +423,7 @@ app.get("/api/admin/:school/metrics", async (req, res) => {
       return res.status(404).json({ error: "School not found" });
     }
 
-    const authCheck = requireAdminScope(auth, school.id);
+    const authCheck = requireAdminScope(auth, config, school);
     if (!authCheck.ok) {
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
@@ -537,7 +543,7 @@ app.get("/api/admin/:school/submissions", async (req, res) => {
       return res.status(404).json({ error: "School not found" });
     }
 
-    const authCheck = requireAdminScope(auth, school.id);
+    const authCheck = requireAdminScope(auth, config, school);
     if (!authCheck.ok) {
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
@@ -615,7 +621,7 @@ app.get("/api/admin/:school/submissions/export", async (req, res) => {
       return res.status(404).json({ error: "School not found" });
     }
 
-    const authCheck = requireAdminScope(auth, school.id);
+    const authCheck = requireAdminScope(auth, config, school);
     if (!authCheck.ok) {
       return res.status(authCheck.status).json({ error: authCheck.error });
     }

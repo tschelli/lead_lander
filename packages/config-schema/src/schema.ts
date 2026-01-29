@@ -32,6 +32,7 @@ export const ComplianceSchema = z.object({
 
 export const SchoolSchema = z.object({
   id: z.string().min(1),
+  clientId: z.string().min(1),
   slug: z.string().min(1),
   name: z.string().min(1),
   branding: BrandingSchema,

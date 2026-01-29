@@ -7,7 +7,7 @@ export class PgAuthRepo implements AuthRepo {
 
   async findUserByEmail(email: string): Promise<AuthUser | null> {
     const result = await this.pool.query(
-      "SELECT id, email, password_hash, email_verified FROM users WHERE LOWER(email) = $1",
+      "SELECT id, email, password_hash, email_verified, client_id FROM users WHERE LOWER(email) = $1",
       [email]
     );
     const row = result.rows[0];
@@ -16,13 +16,14 @@ export class PgAuthRepo implements AuthRepo {
       id: row.id,
       email: row.email,
       passwordHash: row.password_hash,
-      emailVerified: row.email_verified
+      emailVerified: row.email_verified,
+      clientId: row.client_id ?? null
     };
   }
 
   async findUserById(id: string): Promise<AuthUser | null> {
     const result = await this.pool.query(
-      "SELECT id, email, password_hash, email_verified FROM users WHERE id = $1",
+      "SELECT id, email, password_hash, email_verified, client_id FROM users WHERE id = $1",
       [id]
     );
     const row = result.rows[0];
@@ -31,7 +32,8 @@ export class PgAuthRepo implements AuthRepo {
       id: row.id,
       email: row.email,
       passwordHash: row.password_hash,
-      emailVerified: row.email_verified
+      emailVerified: row.email_verified,
+      clientId: row.client_id ?? null
     };
   }
 

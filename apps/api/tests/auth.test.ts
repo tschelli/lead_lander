@@ -72,7 +72,8 @@ describe("auth core", () => {
       id: "user-1",
       email: "test@example.com",
       passwordHash,
-      emailVerified: true
+      emailVerified: true,
+      clientId: null
     };
     repo.users.set(user.id, user);
     repo.usersByEmail.set(user.email, user.id);
@@ -97,7 +98,8 @@ describe("auth core", () => {
       id: "user-2",
       email: "reset@example.com",
       passwordHash,
-      emailVerified: true
+      emailVerified: true,
+      clientId: null
     };
     repo.users.set(user.id, user);
     repo.usersByEmail.set(user.email, user.id);
