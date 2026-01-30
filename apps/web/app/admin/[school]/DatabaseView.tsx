@@ -145,7 +145,8 @@ export function DatabaseView({ schoolSlug, apiBase, programs, campuses }: Databa
     setLoading(true);
     setError(null);
 
-    fetch(`${apiBase}/api/admin/${schoolSlug}/submissions?${queryParams.toString()}`, {
+    const base = "/api";
+    fetch(`${base}/admin/${schoolSlug}/submissions?${queryParams.toString()}`, {
       headers,
       credentials: "include",
       cache: "no-store"
@@ -171,11 +172,11 @@ export function DatabaseView({ schoolSlug, apiBase, programs, campuses }: Databa
       .catch((err: Error) => {
         if (!active) return;
         if (err.message === "unauthorized") {
-          setError("Please sign in to view submissions.");
+          window.location.href = `/admin/${schoolSlug}/login`;
           return;
         }
         if (err.message === "forbidden") {
-          setError("You do not have access to this school.");
+          window.location.href = `/admin/${schoolSlug}/login`;
           return;
         }
         setError(err.message);
@@ -233,7 +234,7 @@ export function DatabaseView({ schoolSlug, apiBase, programs, campuses }: Databa
     }
 
     const response = await fetch(
-      `${apiBase}/api/admin/${schoolSlug}/submissions/export?${params.toString()}`,
+      `/api/admin/${schoolSlug}/submissions/export?${params.toString()}`,
       {
         headers,
         credentials: "include",

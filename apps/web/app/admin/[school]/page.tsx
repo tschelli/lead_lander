@@ -60,7 +60,7 @@ export default async function AdminAccount({ params }: { params: { school: strin
       cache: "no-store"
     });
 
-    if (response.status === 401) {
+    if (response.status === 401 || response.status === 403) {
       redirect(`/admin/${school.slug}/login`);
     }
 

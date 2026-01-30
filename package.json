@@ -11,6 +11,7 @@
     "test": "vitest run",
     "migrate": "tsx scripts/migrate.ts",
     "seed:config": "tsx scripts/seed-config.ts",
+    "verify:migrations": "tsx scripts/verify-migrations.ts",
     "summary": "tsx scripts/monthly-summary.ts",
     "requeue": "tsx scripts/requeue-missing-crm.ts"
   },
