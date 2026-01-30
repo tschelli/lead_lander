@@ -10,7 +10,8 @@ const configDir = process.env.CONFIG_DIR
 const pool = new Pool({ connectionString: databaseUrl });
 
 function toJson(value: unknown) {
-  return value === undefined ? null : value;
+  if (value === undefined) return null;
+  return JSON.stringify(value);
 }
 
 async function seed() {
