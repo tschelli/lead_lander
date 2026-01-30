@@ -16,10 +16,16 @@ function parseNumberArg(flag: string, fallback: number) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function parseStringArg(flag: string) {
+  const arg = process.argv.find((item) => item.startsWith(`${flag}=`));
+  return arg ? arg.split("=")[1] : null;
+}
+
 async function run() {
   const olderThanMinutes = parseNumberArg("--older-than-min", 10);
   const limit = parseNumberArg("--limit", 200);
   const dryRun = process.argv.includes("--dry-run");
+  const clientId = parseStringArg("--client-id");
 
   const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000);
   const pool = new Pool({ connectionString: databaseUrl });
@@ -27,15 +33,16 @@ async function run() {
 
   const result = await pool.query(
     `
-      SELECT id
+      SELECT id, client_id
       FROM submissions
       WHERE crm_lead_id IS NULL
         AND created_at < $1
         AND status IN ('received', 'delivering')
+        AND ($3::text IS NULL OR client_id = $3)
       ORDER BY created_at ASC
       LIMIT $2
     `,
-    [cutoff, limit]
+    [cutoff, limit, clientId]
   );
 
   if (result.rows.length === 0) {
@@ -49,15 +56,16 @@ async function run() {
 
   for (const row of result.rows) {
     const submissionId = row.id as string;
+    const submissionClientId = row.client_id as string;
     if (dryRun) {
-      console.log(`[dry-run] would requeue ${submissionId}`);
+      console.log(`[dry-run] would requeue ${submissionId} (${submissionClientId})`);
       queued += 1;
       continue;
     }
 
     await queue.add(
       "create_lead",
-      { submissionId, stepIndex: 1 },
+      { submissionId, stepIndex: 1, clientId: submissionClientId },
       {
         jobId: `create-${submissionId}`,
         attempts: maxAttempts,
@@ -71,9 +79,9 @@ async function run() {
     );
 
     await pool.query(
-      `INSERT INTO audit_log (id, submission_id, event, payload, created_at)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [uuidv4(), submissionId, "requeued_create", { source: "backfill" }, new Date()]
+      `INSERT INTO audit_log (id, client_id, submission_id, event, payload, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), submissionClientId, submissionId, "requeued_create", { source: "backfill" }, new Date()]
     );
 
     queued += 1;

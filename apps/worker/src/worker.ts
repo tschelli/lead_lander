@@ -15,6 +15,7 @@ void deliveryQueue;
 
 type SubmissionRow = {
   id: string;
+  client_id: string;
   school_id: string;
   campus_id: string | null;
   program_id: string;
@@ -39,18 +40,23 @@ function truncate(value: string | undefined, max = 5000) {
   return value.length > max ? value.slice(0, max) : value;
 }
 
-async function logAudit(submissionId: string, event: string, payload: Record<string, unknown>) {
+async function logAudit(
+  clientId: string,
+  submissionId: string,
+  event: string,
+  payload: Record<string, unknown>
+) {
   await pool.query(
-    `INSERT INTO audit_log (id, submission_id, event, payload, created_at)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [uuidv4(), submissionId, event, payload, new Date()]
+    `INSERT INTO audit_log (id, client_id, submission_id, event, payload, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [uuidv4(), clientId, submissionId, event, payload, new Date()]
   );
 }
 
-async function updateSubmissionStatus(submissionId: string, status: string) {
+async function updateSubmissionStatus(clientId: string, submissionId: string, status: string) {
   await pool.query(
-    "UPDATE submissions SET status = $1, updated_at = $2 WHERE id = $3",
-    [status, new Date(), submissionId]
+    "UPDATE submissions SET status = $1, updated_at = $2 WHERE id = $3 AND client_id = $4",
+    [status, new Date(), submissionId, clientId]
   );
 }
 
@@ -79,6 +85,7 @@ const worker = new Worker(
   env.queueName,
   async (job) => {
     const submissionId = job.data.submissionId as string;
+    const clientId = job.data.clientId as string;
     const jobType = job.name;
     const action = jobType === "create_lead" ? "create" : "update";
     const stepIndex = jobType === "create_lead"
@@ -95,8 +102,8 @@ const worker = new Worker(
     console.log(`[${submissionId}] ${jobType} attempt ${attemptNumber}`);
 
     const submissionResult = await pool.query<SubmissionRow>(
-      "SELECT * FROM submissions WHERE id = $1",
-      [submissionId]
+      "SELECT * FROM submissions WHERE id = $1 AND client_id = $2",
+      [submissionId, clientId]
     );
 
     if (submissionResult.rows.length === 0) {
@@ -109,10 +116,10 @@ const worker = new Worker(
       `
         SELECT 1
         FROM delivery_attempts
-        WHERE submission_id = $1 AND job_type = $2 AND step_index = $3 AND status = 'delivered'
+        WHERE client_id = $1 AND submission_id = $2 AND job_type = $3 AND step_index = $4 AND status = 'delivered'
         LIMIT 1
       `,
-      [submissionId, jobType, stepIndex]
+      [clientId, submissionId, jobType, stepIndex]
     );
 
     if (dedupeResult.rows.length > 0) {
@@ -125,16 +132,16 @@ const worker = new Worker(
       return { skipped: true };
     }
 
-    await updateSubmissionStatus(submissionId, "delivering");
+    await updateSubmissionStatus(clientId, submissionId, "delivering");
 
     const attemptId = uuidv4();
     const createdAt = new Date();
 
     await pool.query(
       `INSERT INTO delivery_attempts
-        (id, submission_id, attempt_number, status, job_type, step_index, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
-      [attemptId, submissionId, attemptNumber, "started", jobType, stepIndex, createdAt]
+        (id, client_id, submission_id, attempt_number, status, job_type, step_index, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
+      [attemptId, clientId, submissionId, attemptNumber, "started", jobType, stepIndex, createdAt]
     );
 
     const config = getConfig();
@@ -146,8 +153,8 @@ const worker = new Worker(
     );
 
     if (!entities) {
-      await updateSubmissionStatus(submissionId, "failed");
-      await logAudit(submissionId, "failed", { reason: "Missing config entities" });
+      await updateSubmissionStatus(clientId, submissionId, "failed");
+      await logAudit(clientId, submissionId, "failed", { reason: "Missing config entities" });
       console.error(`[${submissionId}] Missing config entities`);
       throw new Error("Missing config entities");
     }
@@ -157,8 +164,8 @@ const worker = new Worker(
     );
 
     if (!crmConnection) {
-      await updateSubmissionStatus(submissionId, "failed");
-      await logAudit(submissionId, "failed", { reason: "Missing CRM connection" });
+      await updateSubmissionStatus(clientId, submissionId, "failed");
+      await logAudit(clientId, submissionId, "failed", { reason: "Missing CRM connection" });
       console.error(`[${submissionId}] Missing CRM connection`);
       throw new Error("Missing CRM connection");
     }
@@ -222,8 +229,8 @@ const worker = new Worker(
     if (!result.success) {
       const maxReached = attemptNumber >= env.maxAttempts;
       if (maxReached) {
-        await updateSubmissionStatus(submissionId, "failed");
-        await logAudit(submissionId, "failed", { reason: result.error || "Delivery failed" });
+        await updateSubmissionStatus(clientId, submissionId, "failed");
+        await logAudit(clientId, submissionId, "failed", { reason: result.error || "Delivery failed" });
         console.error(`[${submissionId}] Delivery failed after max attempts`);
       }
 
@@ -231,18 +238,19 @@ const worker = new Worker(
     }
 
     if (jobType === "create_lead" && result.crmLeadId) {
-      await pool.query("UPDATE submissions SET crm_lead_id = $1 WHERE id = $2", [
+      await pool.query("UPDATE submissions SET crm_lead_id = $1 WHERE id = $2 AND client_id = $3", [
         result.crmLeadId,
-        submissionId
+        submissionId,
+        clientId
       ]);
     }
 
     await pool.query(
-      "UPDATE submissions SET status = $1, delivered_at = $2, updated_at = $2 WHERE id = $3",
-      ["delivered", new Date(), submissionId]
+      "UPDATE submissions SET status = $1, delivered_at = $2, updated_at = $2 WHERE id = $3 AND client_id = $4",
+      ["delivered", new Date(), submissionId, clientId]
     );
 
-    await logAudit(submissionId, "delivered", { statusCode: result.statusCode });
+    await logAudit(clientId, submissionId, "delivered", { statusCode: result.statusCode });
     console.log(`[${submissionId}] Delivery succeeded`);
 
     const landingPage = config.landingPages.find(

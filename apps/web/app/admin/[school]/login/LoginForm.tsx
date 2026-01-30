@@ -32,7 +32,7 @@ export function LoginForm({ schoolSlug, schoolName }: LoginFormProps) {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password, schoolSlug })
       });
 
       if (!response.ok) {

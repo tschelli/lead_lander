@@ -102,11 +102,13 @@ const authRepo = new PgAuthRepo(pool);
 
 const AuthLoginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1)
+  password: z.string().min(1),
+  schoolSlug: z.string().min(1)
 });
 
 const AuthResetRequestSchema = z.object({
-  email: z.string().email()
+  email: z.string().email(),
+  schoolSlug: z.string().min(1)
 });
 
 const AuthResetSchema = z.object({
@@ -259,17 +261,22 @@ function parseDateInput(value?: string) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-async function logAdminAudit(schoolId: string, event: string, payload: Record<string, unknown>) {
+async function logAdminAudit(
+  clientId: string,
+  schoolId: string,
+  event: string,
+  payload: Record<string, unknown>
+) {
   await pool.query(
-    `INSERT INTO admin_audit_log (id, school_id, event, payload, created_at)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [uuidv4(), schoolId, event, payload, new Date()]
+    `INSERT INTO admin_audit_log (id, client_id, school_id, event, payload, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [uuidv4(), clientId, schoolId, event, payload, new Date()]
   );
 }
 
-function buildSubmissionFilters(req: express.Request, schoolId: string) {
-  const clauses: string[] = ["school_id = $1"];
-  const values: (string | number | Date)[] = [schoolId];
+function buildSubmissionFilters(req: express.Request, clientId: string, schoolId: string) {
+  const clauses: string[] = ["client_id = $1", "school_id = $2"];
+  const values: (string | number | Date)[] = [clientId, schoolId];
 
   const pushValue = (value: string | number | Date) => {
     values.push(value);
@@ -357,8 +364,14 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
     }
 
-    const { email, password } = parseResult.data;
-    const authResult = await authenticateUser(authRepo, email, password);
+    const { email, password, schoolSlug } = parseResult.data;
+    const config = getConfig();
+    const school = config.schools.find((item) => item.slug === schoolSlug);
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const authResult = await authenticateUser(authRepo, school.clientId, email, password);
     if (!authResult.ok) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
@@ -422,7 +435,13 @@ app.post("/api/auth/request-password-reset", async (req, res) => {
       return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
     }
 
-    await requestPasswordReset(authRepo, parseResult.data.email);
+    const config = getConfig();
+    const school = config.schools.find((item) => item.slug === parseResult.data.schoolSlug);
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    await requestPasswordReset(authRepo, school.clientId, parseResult.data.email);
     return res.json({ status: "ok" });
   } catch (error) {
     console.error("Auth reset request error", error);
@@ -493,9 +512,9 @@ app.get("/api/admin/:school/metrics", async (req, res) => {
           SUM(CASE WHEN status = 'received' THEN 1 ELSE 0 END) AS received,
           MAX(COALESCE(last_step_completed, 0)) AS max_step
         FROM submissions
-        WHERE school_id = $1 AND created_at >= $2 AND created_at < $3
+        WHERE client_id = $1 AND school_id = $2 AND created_at >= $3 AND created_at < $4
       `,
-      [school.id, from, to]
+      [school.clientId, school.id, from, to]
     );
 
     const stepsResult = await pool.query(
@@ -503,10 +522,10 @@ app.get("/api/admin/:school/metrics", async (req, res) => {
         SELECT COALESCE(last_step_completed, 0) AS last_step_completed,
                COUNT(*) AS count
         FROM submissions
-        WHERE school_id = $1 AND created_at >= $2 AND created_at < $3
+        WHERE client_id = $1 AND school_id = $2 AND created_at >= $3 AND created_at < $4
         GROUP BY COALESCE(last_step_completed, 0)
       `,
-      [school.id, from, to]
+      [school.clientId, school.id, from, to]
     );
 
     const perfResult = await pool.query(
@@ -516,23 +535,23 @@ app.get("/api/admin/:school/metrics", async (req, res) => {
           SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) AS delivered,
           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
         FROM submissions
-        WHERE school_id = $1 AND created_at >= $2 AND created_at < $3
+        WHERE client_id = $1 AND school_id = $2 AND created_at >= $3 AND created_at < $4
         GROUP BY campus_id, program_id
         ORDER BY leads DESC
         LIMIT 5
       `,
-      [school.id, from, to]
+      [school.clientId, school.id, from, to]
     );
 
     const snapshotResult = await pool.query(
       `
         SELECT id, email, status, crm_lead_id, updated_at
         FROM submissions
-        WHERE school_id = $1
+        WHERE client_id = $1 AND school_id = $2
         ORDER BY updated_at DESC
         LIMIT 5
       `,
-      [school.id]
+      [school.clientId, school.id]
     );
 
     const summary = summaryResult.rows[0] || {};
@@ -597,7 +616,7 @@ app.get("/api/admin/:school/submissions", async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 25, 200);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
 
-    const { whereSql, values } = buildSubmissionFilters(req, school.id);
+    const { whereSql, values } = buildSubmissionFilters(req, school.clientId, school.id);
 
     const countResult = await pool.query(
       `
@@ -728,7 +747,7 @@ app.get("/api/admin/:school/submissions/export", async (req, res) => {
 
     const finalFields = selectedFields.length > 0 ? selectedFields : defaultFields;
 
-    const { whereSql, values } = buildSubmissionFilters(req, school.id);
+    const { whereSql, values } = buildSubmissionFilters(req, school.clientId, school.id);
 
     const escapeCsv = (value: unknown) => {
       if (value === null || value === undefined) return "";
@@ -785,7 +804,7 @@ app.get("/api/admin/:school/submissions/export", async (req, res) => {
       if (result.rows.length < chunkLimit) break;
     }
 
-    await logAdminAudit(school.id, "export_submissions", {
+    await logAdminAudit(school.clientId, school.id, "export_submissions", {
       fields: finalFields,
       limit,
       offset,
@@ -834,6 +853,7 @@ app.post("/api/lead/start", async (req, res) => {
 
     const submissionId = uuidv4();
     const idempotencyKey = computeIdempotencyKey({
+      clientId: entities.school.clientId,
       email: payload.email,
       phone: payload.phone,
       schoolId: payload.schoolId,
@@ -847,14 +867,15 @@ app.post("/api/lead/start", async (req, res) => {
     const insertResult = await pool.query(
       `
         INSERT INTO submissions
-          (id, created_at, updated_at, school_id, campus_id, program_id, first_name, last_name, email, phone, answers, metadata, status, idempotency_key, consented, consent_text_version, consent_timestamp, last_step_completed, created_from_step)
+          (id, client_id, created_at, updated_at, school_id, campus_id, program_id, first_name, last_name, email, phone, answers, metadata, status, idempotency_key, consented, consent_text_version, consent_timestamp, last_step_completed, created_from_step)
         VALUES
-          ($1, $2, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $17)
+          ($1, $2, $3, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $18)
         ON CONFLICT (idempotency_key) DO NOTHING
         RETURNING id, status
       `,
       [
         submissionId,
+        entities.school.clientId,
         now,
         payload.schoolId,
         payload.campusId,
@@ -890,9 +911,9 @@ app.post("/api/lead/start", async (req, res) => {
       console.log(`[${finalSubmissionId}] Duplicate submission accepted`);
     } else {
       await pool.query(
-        `INSERT INTO audit_log (id, submission_id, event, payload, created_at)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [uuidv4(), submissionId, "received", { metadata, stepIndex: 1 }, now]
+        `INSERT INTO audit_log (id, client_id, submission_id, event, payload, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [uuidv4(), entities.school.clientId, submissionId, "received", { metadata, stepIndex: 1 }, now]
       );
       console.log(`[${submissionId}] Submission received`);
     }
@@ -902,7 +923,8 @@ app.post("/api/lead/start", async (req, res) => {
         "create_lead",
         {
           submissionId,
-          stepIndex: 1
+          stepIndex: 1,
+          clientId: entities.school.clientId
         },
         {
           jobId: `create-${submissionId}`,
@@ -946,7 +968,7 @@ app.post("/api/lead/step", async (req, res) => {
             updated_at = $2,
             last_step_completed = GREATEST(COALESCE(last_step_completed, 0), $3)
         WHERE id = $4
-        RETURNING id, status
+        RETURNING id, status, client_id
       `,
       [payload.answers, now, payload.stepIndex, payload.submissionId]
     );
@@ -955,17 +977,23 @@ app.post("/api/lead/step", async (req, res) => {
       return res.status(404).json({ error: "Submission not found" });
     }
 
+    const submissionClientId = updateResult.rows[0]?.client_id as string | undefined;
+    if (!submissionClientId) {
+      return res.status(500).json({ error: "Missing client context" });
+    }
+
     await pool.query(
-      `INSERT INTO audit_log (id, submission_id, event, payload, created_at)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [uuidv4(), payload.submissionId, "step_update", { stepIndex: payload.stepIndex }, now]
+      `INSERT INTO audit_log (id, client_id, submission_id, event, payload, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), submissionClientId, payload.submissionId, "step_update", { stepIndex: payload.stepIndex }, now]
     );
 
     await deliveryQueue.add(
       "update_lead",
       {
         submissionId: payload.submissionId,
-        stepIndex: payload.stepIndex
+        stepIndex: payload.stepIndex,
+        clientId: submissionClientId
       },
       {
         jobId: `update-${payload.submissionId}-${payload.stepIndex}`,
@@ -1013,6 +1041,7 @@ app.post("/api/submit", async (req, res) => {
 
     const submissionId = uuidv4();
     const idempotencyKey = computeIdempotencyKey({
+      clientId: entities.school.clientId,
       email: payload.email,
       phone: payload.phone || null,
       schoolId: payload.schoolId,
@@ -1026,14 +1055,15 @@ app.post("/api/submit", async (req, res) => {
     const insertResult = await pool.query(
       `
         INSERT INTO submissions
-          (id, created_at, updated_at, school_id, campus_id, program_id, first_name, last_name, email, phone, answers, metadata, status, idempotency_key, consented, consent_text_version, consent_timestamp)
+          (id, client_id, created_at, updated_at, school_id, campus_id, program_id, first_name, last_name, email, phone, answers, metadata, status, idempotency_key, consented, consent_text_version, consent_timestamp)
         VALUES
-          ($1, $2, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+          ($1, $2, $3, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         ON CONFLICT (idempotency_key) DO NOTHING
         RETURNING id, status
       `,
       [
         submissionId,
+        entities.school.clientId,
         now,
         payload.schoolId,
         payload.campusId,
@@ -1068,9 +1098,9 @@ app.post("/api/submit", async (req, res) => {
       console.log(`[${finalSubmissionId}] Duplicate submission accepted`);
     } else {
       await pool.query(
-        `INSERT INTO audit_log (id, submission_id, event, payload, created_at)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [uuidv4(), submissionId, "received", { metadata }, now]
+        `INSERT INTO audit_log (id, client_id, submission_id, event, payload, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [uuidv4(), entities.school.clientId, submissionId, "received", { metadata }, now]
       );
       console.log(`[${submissionId}] Submission received`);
     }
@@ -1080,7 +1110,8 @@ app.post("/api/submit", async (req, res) => {
         "create_lead",
         {
           submissionId,
-          stepIndex: 1
+          stepIndex: 1,
+          clientId: entities.school.clientId
         },
         {
           jobId: `create-${submissionId}`,

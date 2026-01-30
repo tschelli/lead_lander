@@ -17,7 +17,7 @@ export type PasswordResetToken = {
 };
 
 export type AuthRepo = {
-  findUserByEmail(email: string): Promise<AuthUser | null>;
+  findUserByEmail(clientId: string, email: string): Promise<AuthUser | null>;
   findUserById(id: string): Promise<AuthUser | null>;
   updateLastLogin(id: string): Promise<void>;
   createPasswordResetToken(input: {
@@ -62,9 +62,14 @@ export function generateResetToken() {
   return randomBytes(32).toString("base64url");
 }
 
-export async function authenticateUser(repo: AuthRepo, email: string, password: string) {
+export async function authenticateUser(
+  repo: AuthRepo,
+  clientId: string,
+  email: string,
+  password: string
+) {
   const normalized = email.trim().toLowerCase();
-  const user = await repo.findUserByEmail(normalized);
+  const user = await repo.findUserByEmail(clientId, normalized);
   if (!user) {
     return { ok: false as const, reason: "invalid" };
   }
@@ -77,9 +82,14 @@ export async function authenticateUser(repo: AuthRepo, email: string, password: 
   return { ok: true as const, user };
 }
 
-export async function requestPasswordReset(repo: AuthRepo, email: string, now = new Date()) {
+export async function requestPasswordReset(
+  repo: AuthRepo,
+  clientId: string,
+  email: string,
+  now = new Date()
+) {
   const normalized = email.trim().toLowerCase();
-  const user = await repo.findUserByEmail(normalized);
+  const user = await repo.findUserByEmail(clientId, normalized);
   if (!user) {
     return { ok: true as const, token: null };
   }

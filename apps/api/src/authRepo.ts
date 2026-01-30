@@ -5,10 +5,10 @@ import type { AuthRepo, AuthUser, PasswordResetToken } from "./auth";
 export class PgAuthRepo implements AuthRepo {
   constructor(private pool: Pool) {}
 
-  async findUserByEmail(email: string): Promise<AuthUser | null> {
+  async findUserByEmail(clientId: string, email: string): Promise<AuthUser | null> {
     const result = await this.pool.query(
-      "SELECT id, email, password_hash, email_verified, client_id FROM users WHERE LOWER(email) = $1",
-      [email]
+      "SELECT id, email, password_hash, email_verified, client_id FROM users WHERE client_id = $1 AND LOWER(email) = $2",
+      [clientId, email]
     );
     const row = result.rows[0];
     if (!row) return null;

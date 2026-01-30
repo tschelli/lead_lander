@@ -4,6 +4,7 @@ import { computeIdempotencyKey } from "../src/idempotency";
 describe("computeIdempotencyKey", () => {
   it("returns stable hash for same input", () => {
     const key1 = computeIdempotencyKey({
+      clientId: "client-1",
       email: "Test@Example.com",
       phone: "(555) 123-4567",
       schoolId: "school",
@@ -12,6 +13,7 @@ describe("computeIdempotencyKey", () => {
     });
 
     const key2 = computeIdempotencyKey({
+      clientId: "client-1",
       email: "test@example.com",
       phone: "5551234567",
       schoolId: "school",
@@ -24,6 +26,7 @@ describe("computeIdempotencyKey", () => {
 
   it("changes when program changes", () => {
     const key1 = computeIdempotencyKey({
+      clientId: "client-1",
       email: "test@example.com",
       phone: "5551234567",
       schoolId: "school",
@@ -32,6 +35,7 @@ describe("computeIdempotencyKey", () => {
     });
 
     const key2 = computeIdempotencyKey({
+      clientId: "client-2",
       email: "test@example.com",
       phone: "5551234567",
       schoolId: "school",

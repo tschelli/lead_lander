@@ -19,8 +19,14 @@ function parseMonth() {
   return { start, end, month };
 }
 
+function parseClientId() {
+  const arg = process.argv.find((item) => item.startsWith("--client-id="));
+  return arg ? arg.split("=")[1] : null;
+}
+
 async function run() {
   const { start, end, month } = parseMonth();
+  const clientId = parseClientId();
   const pool = new Pool({ connectionString: databaseUrl });
   const config = loadConfig(configDir);
 
@@ -32,10 +38,11 @@ async function run() {
         SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
       FROM submissions
       WHERE created_at >= $1 AND created_at < $2
+        AND ($3::text IS NULL OR client_id = $3)
       GROUP BY campus_id, program_id
       ORDER BY campus_id, program_id
     `,
-    [start, end]
+    [start, end, clientId]
   );
 
   console.log(`Monthly summary for ${month}`);

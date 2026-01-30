@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 
 type IdempotencyInput = {
+  clientId: string;
   email: string;
   phone: string | null;
   schoolId: string;
@@ -10,6 +11,7 @@ type IdempotencyInput = {
 
 export function computeIdempotencyKey(input: IdempotencyInput) {
   const normalized = [
+    input.clientId,
     input.email.trim().toLowerCase(),
     input.phone?.replace(/\D/g, "") || "",
     input.schoolId,

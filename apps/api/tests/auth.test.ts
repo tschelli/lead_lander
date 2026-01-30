@@ -15,8 +15,8 @@ class MemoryAuthRepo implements AuthRepo {
   usersByEmail = new Map<string, string>();
   resetTokens = new Map<string, { token: PasswordResetToken; tokenHash: string; expiresAt: Date; usedAt?: Date }>();
 
-  async findUserByEmail(email: string): Promise<AuthUser | null> {
-    const id = this.usersByEmail.get(email);
+  async findUserByEmail(clientId: string, email: string): Promise<AuthUser | null> {
+    const id = this.usersByEmail.get(`${clientId}:${email}`);
     return id ? this.users.get(id) ?? null : null;
   }
 
@@ -73,15 +73,15 @@ describe("auth core", () => {
       email: "test@example.com",
       passwordHash,
       emailVerified: true,
-      clientId: null
+      clientId: "client-1"
     };
     repo.users.set(user.id, user);
-    repo.usersByEmail.set(user.email, user.id);
+    repo.usersByEmail.set(`${user.clientId}:${user.email}`, user.id);
 
-    const okResult = await authenticateUser(repo, "test@example.com", "correct-password");
+    const okResult = await authenticateUser(repo, "client-1", "test@example.com", "correct-password");
     expect(okResult.ok).toBe(true);
 
-    const badResult = await authenticateUser(repo, "test@example.com", "wrong-password");
+    const badResult = await authenticateUser(repo, "client-1", "test@example.com", "wrong-password");
     expect(badResult.ok).toBe(false);
   });
 
@@ -99,19 +99,19 @@ describe("auth core", () => {
       email: "reset@example.com",
       passwordHash,
       emailVerified: true,
-      clientId: null
+      clientId: "client-1"
     };
     repo.users.set(user.id, user);
-    repo.usersByEmail.set(user.email, user.id);
+    repo.usersByEmail.set(`${user.clientId}:${user.email}`, user.id);
 
-    const request = await requestPasswordReset(repo, user.email);
+    const request = await requestPasswordReset(repo, "client-1", user.email);
     expect(request.ok).toBe(true);
     expect(request.token).toBeTruthy();
 
     const reset = await resetPasswordWithToken(repo, request.token as string, "new-password");
     expect(reset.ok).toBe(true);
 
-    const updatedUser = await repo.findUserByEmail(user.email);
+    const updatedUser = await repo.findUserByEmail("client-1", user.email);
     const matchesOld = await verifyPassword("initial-password", updatedUser!.passwordHash);
     const matchesNew = await verifyPassword("new-password", updatedUser!.passwordHash);
 
