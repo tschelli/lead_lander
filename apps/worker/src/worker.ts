@@ -123,6 +123,16 @@ const worker = new Worker(
     }
 
     const submission = submissionResult.rows[0];
+
+    // Defense-in-depth: Explicit client_id validation
+    if (submission.client_id !== clientId) {
+      await logAudit(clientId, submissionId, "job_payload_client_mismatch", {
+        expectedClientId: submission.client_id,
+        jobClientId: clientId
+      });
+      throw new Error("Job client_id mismatch - potential security issue");
+    }
+
     if (submission.school_id !== schoolId) {
       await logAudit(clientId, submissionId, "job_payload_mismatch", {
         expectedSchoolId: submission.school_id,

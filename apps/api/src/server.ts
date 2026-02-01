@@ -471,16 +471,18 @@ app.post("/api/auth/login", async (req, res) => {
 
     const { email, password, schoolSlug } = parseResult.data;
     const school = await getSchoolBySlug(schoolSlug);
+
+    // Security: Don't reveal if school exists or not - return generic error
     if (!school) {
-      return res.status(404).json({ error: "School not found" });
+      // Simulate authentication delay to prevent timing attacks
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return res.status(401).json({ error: "Invalid credentials" });
     }
 
     const authResult = await authenticateUser(authRepo, school.client_id, email, password);
     if (!authResult.ok) {
-      if (authResult.reason === "disabled") {
-        return res.status(403).json({ error: "Account disabled" });
-      }
-      return res.status(401).json({ error: "Invalid email or password" });
+      // Don't reveal account status - return generic error
+      return res.status(401).json({ error: "Invalid credentials" });
     }
 
     await authRepo.updateLastLogin(authResult.user.id);
@@ -583,21 +585,25 @@ app.get("/healthz", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.get("/api/public/schools", async (_req, res) => {
-  try {
-    const result = await pool.query("SELECT id, slug, name FROM schools ORDER BY name ASC");
-    return res.json({
-      schools: result.rows.map((row) => ({
-        id: row.id,
-        slug: row.slug,
-        name: row.name
-      }))
-    });
-  } catch (error) {
-    console.error("Public schools error", error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
+// SECURITY: Endpoint removed - lists all schools which is information disclosure
+// This will be replaced in Phase 1 repository split with:
+// - Client-scoped endpoint for admins to list their schools
+// - Super admin endpoint for listing all schools (with auth check)
+// app.get("/api/public/schools", async (_req, res) => {
+//   try {
+//     const result = await pool.query("SELECT id, slug, name FROM schools ORDER BY name ASC");
+//     return res.json({
+//       schools: result.rows.map((row) => ({
+//         id: row.id,
+//         slug: row.slug,
+//         name: row.name
+//       }))
+//     });
+//   } catch (error) {
+//     console.error("Public schools error", error);
+//     return res.status(500).json({ error: "Internal server error" });
+//   }
+// });
 
 app.get("/api/public/schools/:school", async (req, res) => {
   try {
@@ -1759,8 +1765,8 @@ app.post("/api/lead/start", async (req, res) => {
     if (insertResult.rowCount === 0) {
       wasInserted = false;
       const existing = await pool.query(
-        "SELECT id, status FROM submissions WHERE idempotency_key = $1",
-        [idempotencyKey]
+        "SELECT id, status FROM submissions WHERE idempotency_key = $1 AND client_id = $2",
+        [idempotencyKey, entities.school.clientId]
       );
       if (existing.rows.length === 0) {
         return res.status(500).json({ error: "Failed to persist submission" });
@@ -1956,8 +1962,8 @@ app.post("/api/submit", async (req, res) => {
     if (insertResult.rowCount === 0) {
       wasInserted = false;
       const existing = await pool.query(
-        "SELECT id, status FROM submissions WHERE idempotency_key = $1",
-        [idempotencyKey]
+        "SELECT id, status FROM submissions WHERE idempotency_key = $1 AND client_id = $2",
+        [idempotencyKey, entities.school.clientId]
       );
       if (existing.rows.length === 0) {
         return res.status(500).json({ error: "Failed to persist submission" });
