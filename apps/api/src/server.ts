@@ -9,7 +9,7 @@ import { env } from "./env";
 import { pool } from "./db";
 import { deliveryQueue } from "./queue";
 import { computeIdempotencyKey } from "./idempotency";
-import { getConfigForClient } from "./config";
+import { getConfigForClient, invalidateConfigCache } from "./config";
 import { createConfigStore } from "./configStore";
 import { PgAuthRepo } from "./authRepo";
 import {
@@ -715,6 +715,134 @@ app.get("/api/public/school/:schoolId/landing/:programSlug", async (req, res) =>
     });
   } catch (error) {
     console.error("Public landing error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get quiz questions for a school (public endpoint)
+app.get("/api/public/schools/:schoolId/quiz", async (req, res) => {
+  try {
+    const schoolId = req.params.schoolId;
+    const school = await getSchoolById(schoolId);
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const config = await getConfigForClient(school.client_id);
+
+    // Filter questions for this school
+    const questions = config.quizQuestions
+      .filter((q) => q.isActive && (!q.schoolId || q.schoolId === schoolId))
+      .map((q) => {
+        const options = config.quizAnswerOptions
+          .filter((opt) => opt.questionId === q.id)
+          .map((opt) => ({
+            id: opt.id,
+            optionText: opt.optionText,
+            displayOrder: opt.displayOrder
+            // Note: pointAssignments are NOT sent to client for security
+          }));
+
+        return {
+          id: q.id,
+          questionText: q.questionText,
+          questionType: q.questionType,
+          helpText: q.helpText,
+          displayOrder: q.displayOrder,
+          conditionalOn: q.conditionalOn,
+          options
+        };
+      })
+      .sort((a, b) => a.displayOrder - b.displayOrder);
+
+    // Get programs that use quiz routing
+    const programs = config.programs
+      .filter((p) => p.schoolId === schoolId && p.useQuizRouting)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        slug: p.slug
+      }));
+
+    return res.json({ questions, programs });
+  } catch (error) {
+    console.error("Public quiz fetch error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Calculate program recommendation based on quiz answers (public endpoint)
+app.post("/api/public/schools/:schoolId/quiz/recommend", async (req, res) => {
+  try {
+    const schoolId = req.params.schoolId;
+    const { answers } = req.body; // answers: { questionId: optionId or [optionIds] }
+
+    if (!answers || typeof answers !== "object") {
+      return res.status(400).json({ error: "Invalid answers format" });
+    }
+
+    const school = await getSchoolById(schoolId);
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const config = await getConfigForClient(school.client_id);
+
+    // Get all programs for this school that use quiz routing
+    const programs = config.programs.filter(
+      (p) => p.schoolId === schoolId && p.useQuizRouting
+    );
+
+    const programScores: Record<string, number> = {};
+
+    // Initialize scores
+    programs.forEach((p) => {
+      programScores[p.id] = 0;
+    });
+
+    // Calculate scores
+    for (const [questionId, answer] of Object.entries(answers)) {
+      const answerArray = Array.isArray(answer) ? answer : [answer];
+
+      for (const optionId of answerArray) {
+        const option = config.quizAnswerOptions.find((opt) => opt.id === optionId);
+
+        if (option) {
+          const pointAssignments = option.pointAssignments || {};
+          for (const [programId, points] of Object.entries(pointAssignments)) {
+            if (programScores[programId] !== undefined) {
+              programScores[programId] += Number(points);
+            }
+          }
+        }
+      }
+    }
+
+    // Find recommended program (highest score)
+    let recommendedProgram = null;
+    let maxScore = 0;
+
+    for (const [programId, score] of Object.entries(programScores)) {
+      if (score > maxScore) {
+        maxScore = score;
+        const program = programs.find((p) => p.id === programId);
+        if (program) {
+          recommendedProgram = {
+            id: program.id,
+            name: program.name,
+            slug: program.slug,
+            score
+          };
+        }
+      }
+    }
+
+    return res.json({
+      recommendedProgram,
+      quizScore: programScores
+    });
+  } catch (error) {
+    console.error("Public quiz recommendation error", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1820,6 +1948,379 @@ app.get(
       });
     } catch (error) {
       console.error("Config drafts list error", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// ===== Quiz Builder Endpoints =====
+
+// Get all quiz questions for a school
+app.get(
+  "/api/admin/schools/:schoolId/quiz/questions",
+  requireSchoolAccess,
+  requireConfigAccess,
+  async (req, res) => {
+    try {
+      const school = res.locals.school;
+
+      const questionsResult = await pool.query(
+        `SELECT * FROM quiz_questions
+         WHERE client_id = $1 AND (school_id = $2 OR school_id IS NULL)
+         ORDER BY display_order, created_at`,
+        [school.client_id, school.id]
+      );
+
+      const optionsResult = await pool.query(
+        `SELECT qao.* FROM quiz_answer_options qao
+         JOIN quiz_questions qq ON qao.question_id = qq.id
+         WHERE qao.client_id = $1 AND (qq.school_id = $2 OR qq.school_id IS NULL)
+         ORDER BY qao.display_order`,
+        [school.client_id, school.id]
+      );
+
+      const questions = questionsResult.rows.map((row) => ({
+        id: row.id,
+        questionText: row.question_text,
+        questionType: row.question_type,
+        helpText: row.help_text,
+        displayOrder: row.display_order,
+        conditionalOn: row.conditional_on,
+        isActive: row.is_active,
+        options: optionsResult.rows
+          .filter((opt) => opt.question_id === row.id)
+          .map((opt) => ({
+            id: opt.id,
+            optionText: opt.option_text,
+            displayOrder: opt.display_order,
+            pointAssignments: opt.point_assignments
+          }))
+      }));
+
+      return res.json({ questions });
+    } catch (error) {
+      console.error("Quiz questions list error", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Create a new quiz question
+app.post(
+  "/api/admin/schools/:schoolId/quiz/questions",
+  requireSchoolAccess,
+  requireConfigAccess,
+  async (req, res) => {
+    try {
+      const school = res.locals.school;
+      const auth = res.locals.auth as AuthContext | null;
+      const { questionText, questionType, helpText, displayOrder, conditionalOn, isActive } = req.body;
+
+      if (!questionText || !questionType) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      const questionId = uuidv4();
+      await pool.query(
+        `INSERT INTO quiz_questions
+         (id, client_id, school_id, question_text, question_type, help_text, display_order, conditional_on, is_active, created_at, updated_at, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $11)`,
+        [
+          questionId,
+          school.client_id,
+          school.id,
+          questionText,
+          questionType,
+          helpText || null,
+          displayOrder || 0,
+          conditionalOn || null,
+          isActive !== false,
+          new Date(),
+          auth?.user.id || null
+        ]
+      );
+
+      invalidateConfigCache(school.client_id);
+
+      return res.status(201).json({ id: questionId });
+    } catch (error) {
+      console.error("Quiz question create error", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Update a quiz question
+app.put(
+  "/api/admin/schools/:schoolId/quiz/questions/:questionId",
+  requireSchoolAccess,
+  requireConfigAccess,
+  async (req, res) => {
+    try {
+      const school = res.locals.school;
+      const auth = res.locals.auth as AuthContext | null;
+      const { questionId } = req.params;
+      const { questionText, questionType, helpText, displayOrder, conditionalOn, isActive } = req.body;
+
+      const updateResult = await pool.query(
+        `UPDATE quiz_questions
+         SET question_text = $1, question_type = $2, help_text = $3, display_order = $4,
+             conditional_on = $5, is_active = $6, updated_at = $7, updated_by = $8
+         WHERE id = $9 AND client_id = $10 AND (school_id = $11 OR school_id IS NULL)`,
+        [
+          questionText,
+          questionType,
+          helpText || null,
+          displayOrder,
+          conditionalOn || null,
+          isActive,
+          new Date(),
+          auth?.user.id || null,
+          questionId,
+          school.client_id,
+          school.id
+        ]
+      );
+
+      if (updateResult.rowCount === 0) {
+        return res.status(404).json({ error: "Question not found" });
+      }
+
+      invalidateConfigCache(school.client_id);
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Quiz question update error", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Delete a quiz question
+app.delete(
+  "/api/admin/schools/:schoolId/quiz/questions/:questionId",
+  requireSchoolAccess,
+  requireConfigAccess,
+  async (req, res) => {
+    try {
+      const school = res.locals.school;
+      const { questionId } = req.params;
+
+      // Delete options first (cascade should handle this, but being explicit)
+      await pool.query(
+        "DELETE FROM quiz_answer_options WHERE question_id = $1 AND client_id = $2",
+        [questionId, school.client_id]
+      );
+
+      const deleteResult = await pool.query(
+        "DELETE FROM quiz_questions WHERE id = $1 AND client_id = $2 AND (school_id = $3 OR school_id IS NULL)",
+        [questionId, school.client_id, school.id]
+      );
+
+      if (deleteResult.rowCount === 0) {
+        return res.status(404).json({ error: "Question not found" });
+      }
+
+      invalidateConfigCache(school.client_id);
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Quiz question delete error", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Create an answer option for a question
+app.post(
+  "/api/admin/schools/:schoolId/quiz/questions/:questionId/options",
+  requireSchoolAccess,
+  requireConfigAccess,
+  async (req, res) => {
+    try {
+      const school = res.locals.school;
+      const { questionId } = req.params;
+      const { optionText, displayOrder, pointAssignments } = req.body;
+
+      if (!optionText) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      // Verify question exists and belongs to this client/school
+      const questionCheck = await pool.query(
+        "SELECT 1 FROM quiz_questions WHERE id = $1 AND client_id = $2 AND (school_id = $3 OR school_id IS NULL)",
+        [questionId, school.client_id, school.id]
+      );
+
+      if (questionCheck.rowCount === 0) {
+        return res.status(404).json({ error: "Question not found" });
+      }
+
+      const optionId = uuidv4();
+      await pool.query(
+        `INSERT INTO quiz_answer_options
+         (id, client_id, question_id, option_text, display_order, point_assignments, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
+        [
+          optionId,
+          school.client_id,
+          questionId,
+          optionText,
+          displayOrder || 0,
+          pointAssignments || {},
+          new Date()
+        ]
+      );
+
+      invalidateConfigCache(school.client_id);
+
+      return res.status(201).json({ id: optionId });
+    } catch (error) {
+      console.error("Quiz option create error", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Update an answer option
+app.put(
+  "/api/admin/schools/:schoolId/quiz/questions/:questionId/options/:optionId",
+  requireSchoolAccess,
+  requireConfigAccess,
+  async (req, res) => {
+    try {
+      const school = res.locals.school;
+      const { optionId } = req.params;
+      const { optionText, displayOrder, pointAssignments } = req.body;
+
+      const updateResult = await pool.query(
+        `UPDATE quiz_answer_options
+         SET option_text = $1, display_order = $2, point_assignments = $3, updated_at = $4
+         WHERE id = $5 AND client_id = $6`,
+        [optionText, displayOrder, pointAssignments || {}, new Date(), optionId, school.client_id]
+      );
+
+      if (updateResult.rowCount === 0) {
+        return res.status(404).json({ error: "Option not found" });
+      }
+
+      invalidateConfigCache(school.client_id);
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Quiz option update error", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Delete an answer option
+app.delete(
+  "/api/admin/schools/:schoolId/quiz/questions/:questionId/options/:optionId",
+  requireSchoolAccess,
+  requireConfigAccess,
+  async (req, res) => {
+    try {
+      const school = res.locals.school;
+      const { optionId } = req.params;
+
+      const deleteResult = await pool.query(
+        "DELETE FROM quiz_answer_options WHERE id = $1 AND client_id = $2",
+        [optionId, school.client_id]
+      );
+
+      if (deleteResult.rowCount === 0) {
+        return res.status(404).json({ error: "Option not found" });
+      }
+
+      invalidateConfigCache(school.client_id);
+
+      return res.json({ success: true });
+    } catch (error) {
+      console.error("Quiz option delete error", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Calculate program recommendation based on quiz answers
+app.post(
+  "/api/admin/schools/:schoolId/quiz/recommend",
+  requireSchoolAccess,
+  async (req, res) => {
+    try {
+      const school = res.locals.school;
+      const { answers } = req.body; // answers: { questionId: optionId or [optionIds] }
+
+      if (!answers || typeof answers !== "object") {
+        return res.status(400).json({ error: "Invalid answers format" });
+      }
+
+      // Get all programs for this school that use quiz routing
+      const programsResult = await pool.query(
+        "SELECT id, name FROM programs WHERE school_id = $1 AND client_id = $2 AND use_quiz_routing = true",
+        [school.id, school.client_id]
+      );
+
+      const programs = programsResult.rows;
+      const programScores: Record<string, number> = {};
+
+      // Initialize scores
+      programs.forEach((p) => {
+        programScores[p.id] = 0;
+      });
+
+      // Calculate scores
+      for (const [questionId, answer] of Object.entries(answers)) {
+        const answerArray = Array.isArray(answer) ? answer : [answer];
+
+        for (const optionId of answerArray) {
+          const optionResult = await pool.query(
+            "SELECT point_assignments FROM quiz_answer_options WHERE id = $1 AND client_id = $2",
+            [optionId, school.client_id]
+          );
+
+          if (optionResult.rowCount && optionResult.rowCount > 0) {
+            const pointAssignments = optionResult.rows[0].point_assignments || {};
+            for (const [programId, points] of Object.entries(pointAssignments)) {
+              if (programScores[programId] !== undefined) {
+                programScores[programId] += Number(points);
+              }
+            }
+          }
+        }
+      }
+
+      // Find recommended program (highest score)
+      let recommendedProgram = null;
+      let maxScore = 0;
+
+      for (const [programId, score] of Object.entries(programScores)) {
+        if (score > maxScore) {
+          maxScore = score;
+          recommendedProgram = programs.find((p) => p.id === programId);
+        }
+      }
+
+      return res.json({
+        recommendedProgram: recommendedProgram
+          ? {
+              id: recommendedProgram.id,
+              name: recommendedProgram.name,
+              score: maxScore
+            }
+          : null,
+        allScores: Object.entries(programScores).map(([programId, score]) => {
+          const program = programs.find((p) => p.id === programId);
+          return {
+            programId,
+            programName: program?.name,
+            score
+          };
+        })
+      });
+    } catch (error) {
+      console.error("Quiz recommendation error", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }

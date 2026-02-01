@@ -41,12 +41,14 @@ export function createConfigStore(pool: Pool): ConfigStore {
         return cached.value;
       }
 
-      const [schools, campuses, programs, landingPages, crmConnections] = await Promise.all([
+      const [schools, campuses, programs, landingPages, crmConnections, quizQuestions, quizAnswerOptions] = await Promise.all([
         pool.query("SELECT * FROM schools WHERE client_id = $1", [clientId]),
         pool.query("SELECT * FROM campuses WHERE client_id = $1", [clientId]),
         pool.query("SELECT * FROM programs WHERE client_id = $1", [clientId]),
         pool.query("SELECT * FROM landing_pages WHERE client_id = $1", [clientId]),
-        pool.query("SELECT * FROM crm_connections WHERE client_id = $1", [clientId])
+        pool.query("SELECT * FROM crm_connections WHERE client_id = $1", [clientId]),
+        pool.query("SELECT * FROM quiz_questions WHERE client_id = $1 ORDER BY display_order", [clientId]),
+        pool.query("SELECT * FROM quiz_answer_options WHERE client_id = $1 ORDER BY display_order", [clientId])
       ]);
 
       const config: Config = {
@@ -97,7 +99,8 @@ export function createConfigStore(pool: Pool): ConfigStore {
               form: true,
               faqs: true
             }
-          }
+          },
+          useQuizRouting: row.use_quiz_routing || false
         })),
         landingPages: landingPages.rows.map((row) => ({
           id: row.id,
@@ -111,6 +114,25 @@ export function createConfigStore(pool: Pool): ConfigStore {
           id: row.id,
           type: row.type,
           config: row.config || undefined
+        })),
+        quizQuestions: quizQuestions.rows.map((row) => ({
+          id: row.id,
+          clientId: row.client_id,
+          schoolId: row.school_id || undefined,
+          questionText: row.question_text,
+          questionType: row.question_type,
+          helpText: row.help_text || undefined,
+          displayOrder: row.display_order,
+          conditionalOn: row.conditional_on || undefined,
+          isActive: row.is_active
+        })),
+        quizAnswerOptions: quizAnswerOptions.rows.map((row) => ({
+          id: row.id,
+          clientId: row.client_id,
+          questionId: row.question_id,
+          optionText: row.option_text,
+          displayOrder: row.display_order,
+          pointAssignments: row.point_assignments || {}
         }))
       };
 
@@ -126,7 +148,9 @@ export function createConfigStore(pool: Pool): ConfigStore {
         campuses: config.campuses.filter((item) => item.schoolId === schoolId),
         programs: config.programs.filter((item) => item.schoolId === schoolId),
         landingPages: config.landingPages.filter((item) => item.schoolId === schoolId),
-        crmConnections: config.crmConnections
+        crmConnections: config.crmConnections,
+        quizQuestions: config.quizQuestions.filter((item) => !item.schoolId || item.schoolId === schoolId),
+        quizAnswerOptions: config.quizAnswerOptions
       };
     },
 

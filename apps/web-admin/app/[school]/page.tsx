@@ -1,8 +1,8 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import "./styles.css";
-import { hasSessionCookie } from "../../../lib/authCookies";
-import { canEditConfig, type User } from "../../../lib/permissions";
+import { hasSessionCookie } from "@/lib/authCookies";
+import { canEditConfig, type User } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -201,7 +201,10 @@ export default async function AdminAccount({ params }: { params: { school: strin
         <div className="admin-official__actions">
           <a className="admin-btn" href={`/admin/${school.slug}/database`}>Database</a>
           {userHasConfigAccess && (
-            <a className="admin-official__ghost" href={`/admin/${school.slug}/config`}>Config builder</a>
+            <>
+              <a className="admin-official__ghost" href={`/admin/${school.slug}/config`}>Config builder</a>
+              <a className="admin-official__ghost" href={`/admin/${school.slug}/quiz`}>Quiz builder</a>
+            </>
           )}
           <a className="admin-official__ghost" href={`/admin/${school.slug}/users`}>Users</a>
           <a className="admin-official__ghost" href={`/admin/${school.slug}/audit`}>Audit</a>

@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { DatabaseView } from "../DatabaseView";
 import "../styles.css";
-import { hasSessionCookie } from "../../../../lib/authCookies";
+import { hasSessionCookie } from "@/lib/authCookies";
 
 export const dynamic = "force-dynamic";
 

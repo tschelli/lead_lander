@@ -177,7 +177,9 @@ export const ProgramSchema = z.object({
       form: true,
       faqs: true
     }
-  })
+  }),
+  // Quiz routing
+  useQuizRouting: z.boolean().default(false)
 });
 
 export const LandingPageSchema = z.object({
@@ -205,12 +207,41 @@ export const CrmConnectionSchema = z.object({
   config: z.record(z.any()).optional()
 });
 
+// Quiz Builder schemas
+export const QuizQuestionSchema = z.object({
+  id: z.string().min(1),
+  clientId: z.string().min(1),
+  schoolId: z.string().optional(),
+  questionText: z.string().min(1),
+  questionType: z.enum(["single_choice", "multiple_choice", "text"]).default("single_choice"),
+  helpText: z.string().optional(),
+  displayOrder: z.number().int().default(0),
+  conditionalOn: z
+    .object({
+      questionId: z.string(),
+      optionIds: z.array(z.string())
+    })
+    .optional(),
+  isActive: z.boolean().default(true)
+});
+
+export const QuizAnswerOptionSchema = z.object({
+  id: z.string().min(1),
+  clientId: z.string().min(1),
+  questionId: z.string().min(1),
+  optionText: z.string().min(1),
+  displayOrder: z.number().int().default(0),
+  pointAssignments: z.record(z.number()).default({}) // Maps program IDs to point values
+});
+
 export const ConfigSchema = z.object({
   schools: z.array(SchoolSchema),
   campuses: z.array(CampusSchema),
   programs: z.array(ProgramSchema),
   landingPages: z.array(LandingPageSchema),
-  crmConnections: z.array(CrmConnectionSchema)
+  crmConnections: z.array(CrmConnectionSchema),
+  quizQuestions: z.array(QuizQuestionSchema).default([]),
+  quizAnswerOptions: z.array(QuizAnswerOptionSchema).default([])
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
@@ -226,4 +257,8 @@ export type ProgramTestimonial = z.infer<typeof ProgramTestimonialSchema>;
 export type ProgramFAQ = z.infer<typeof ProgramFAQSchema>;
 export type ProgramStats = z.infer<typeof ProgramStatsSchema>;
 export type SectionsConfig = z.infer<typeof SectionsConfigSchema>;
+
+// Quiz builder types
+export type QuizQuestion = z.infer<typeof QuizQuestionSchema>;
+export type QuizAnswerOption = z.infer<typeof QuizAnswerOptionSchema>;
 export type FooterContent = z.infer<typeof FooterContentSchema>;

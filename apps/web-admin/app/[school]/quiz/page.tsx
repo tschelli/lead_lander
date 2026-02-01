@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { ConfigBuilderPage } from "./ConfigBuilderPage";
+import { QuizBuilderPage } from "./QuizBuilderPage";
 import "../styles.css";
 import { hasSessionCookie } from "@/lib/authCookies";
 import { canEditConfig, type User } from "@/lib/permissions";
@@ -14,7 +14,7 @@ type ConfigResponse = {
       id: string;
       name: string;
       slug: string;
-      landingCopy: { headline: string; subheadline: string; body: string; ctaText: string };
+      useQuizRouting: boolean;
     }>;
   };
 };
@@ -23,7 +23,7 @@ type AuthMeResponse = {
   user: User;
 };
 
-export default async function AdminConfig({ params }: { params: { school: string } }) {
+export default async function AdminQuizBuilder({ params }: { params: { school: string } }) {
   const requestHeaders = headers();
   const cookie = requestHeaders.get("cookie");
   if (!hasSessionCookie(cookie)) {
@@ -55,7 +55,7 @@ export default async function AdminConfig({ params }: { params: { school: string
         <div className="admin-card">
           <h2>Access Denied</h2>
           <p className="admin-muted">
-            Config builder access requires Super Admin or Client Admin role.
+            Quiz builder access requires Super Admin or Client Admin role.
           </p>
           <a className="admin-btn" href={`/admin/${params.school}`}>
             Back to Dashboard
@@ -103,8 +103,8 @@ export default async function AdminConfig({ params }: { params: { school: string
               <img src={school.branding.logoUrl} alt={`${school.name} logo`} />
             )}
             <div>
-              <h1>{school.name} · Config Builder</h1>
-              <p className="admin-muted">Create and manage landing pages with live preview.</p>
+              <h1>{school.name} · Quiz Builder</h1>
+              <p className="admin-muted">Create custom quiz questions to route users to programs.</p>
             </div>
           </div>
         </div>
@@ -115,7 +115,7 @@ export default async function AdminConfig({ params }: { params: { school: string
         </div>
       </header>
 
-      <ConfigBuilderPage schoolSlug={school.slug} programs={data.config.programs} />
+      <QuizBuilderPage schoolSlug={school.slug} programs={data.config.programs} />
     </div>
   );
 }

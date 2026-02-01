@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { hasSessionCookie } from "../../../lib/authCookies";
+import { hasSessionCookie } from "@/lib/authCookies";
 import { SuperAdminView } from "./SuperAdminView";
 import "../admin.css";
 

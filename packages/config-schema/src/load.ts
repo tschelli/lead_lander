@@ -15,7 +15,9 @@ export function loadConfig(configDir: string): Config {
     campuses: [],
     programs: [],
     landingPages: [],
-    crmConnections: []
+    crmConnections: [],
+    quizQuestions: [],
+    quizAnswerOptions: []
   };
 
   for (const file of files) {
@@ -29,6 +31,8 @@ export function loadConfig(configDir: string): Config {
     merged.programs.push(...validated.programs);
     merged.landingPages.push(...validated.landingPages);
     merged.crmConnections.push(...validated.crmConnections);
+    merged.quizQuestions.push(...(validated.quizQuestions || []));
+    merged.quizAnswerOptions.push(...(validated.quizAnswerOptions || []));
   }
 
   return merged;
