@@ -73,7 +73,8 @@ describe("auth core", () => {
       email: "test@example.com",
       passwordHash,
       emailVerified: true,
-      clientId: "client-1"
+      clientId: "client-1",
+      isActive: true
     };
     repo.users.set(user.id, user);
     repo.usersByEmail.set(`${user.clientId}:${user.email}`, user.id);
@@ -99,7 +100,8 @@ describe("auth core", () => {
       email: "reset@example.com",
       passwordHash,
       emailVerified: true,
-      clientId: "client-1"
+      clientId: "client-1",
+      isActive: true
     };
     repo.users.set(user.id, user);
     repo.usersByEmail.set(`${user.clientId}:${user.email}`, user.id);

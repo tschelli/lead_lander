@@ -151,6 +151,29 @@
   font-size: 0.95rem;
 }
 
+.admin-users__table {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-users__row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1.4fr 1fr 1fr auto;
+  align-items: center;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #f8fafc;
+}
+
+@media (max-width: 900px) {
+  .admin-users__row {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+}
+
 .admin-db {
   display: grid;
   gap: 20px;

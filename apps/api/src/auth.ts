@@ -9,6 +9,7 @@ export type AuthUser = {
   passwordHash: string;
   emailVerified: boolean;
   clientId: string | null;
+  isActive: boolean;
 };
 
 export type PasswordResetToken = {
@@ -72,6 +73,9 @@ export async function authenticateUser(
   const user = await repo.findUserByEmail(clientId, normalized);
   if (!user) {
     return { ok: false as const, reason: "invalid" };
+  }
+  if (!user.isActive) {
+    return { ok: false as const, reason: "disabled" };
   }
 
   const match = await verifyPassword(password, user.passwordHash);

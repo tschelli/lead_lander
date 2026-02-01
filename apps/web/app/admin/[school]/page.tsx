@@ -159,6 +159,7 @@ export default async function AdminAccount({ params }: { params: { school: strin
         <div className="admin-official__actions">
           <a className="admin-btn" href={`/admin/${school.slug}/database`}>Database</a>
           <a className="admin-official__ghost" href={`/admin/${school.slug}/config`}>Config builder</a>
+          <a className="admin-official__ghost" href={`/admin/${school.slug}/users`}>Users</a>
         </div>
       </header>
 

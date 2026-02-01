@@ -38,7 +38,8 @@ function makeAuth(overrides: Partial<AuthContext>): AuthContext {
       email: "test@example.com",
       passwordHash: "hash",
       emailVerified: true,
-      clientId: null
+      clientId: null,
+      isActive: true
     },
     roles: [],
     ...overrides

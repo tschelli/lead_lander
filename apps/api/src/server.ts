@@ -14,6 +14,7 @@ import { PgAuthRepo } from "./authRepo";
 import {
   authenticateUser,
   createSessionToken,
+  hashPassword,
   requestPasswordReset,
   resetPasswordWithToken,
   verifySessionToken
@@ -116,6 +117,21 @@ const AuthResetSchema = z.object({
   password: z.string().min(8)
 });
 
+const RoleSchema = z.enum(["super_admin", "client_admin", "school_admin", "staff"]);
+
+const AdminUserCreateSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  role: RoleSchema,
+  schoolId: z.string().min(1).nullable().optional()
+});
+
+const AdminUserUpdateSchema = z.object({
+  isActive: z.boolean().optional(),
+  role: RoleSchema.optional(),
+  schoolId: z.string().min(1).nullable().optional()
+});
+
 async function loadAuthContext(req: express.Request): Promise<AuthContext | null> {
   const token = req.cookies?.[env.authCookieName];
   if (!token) return null;
@@ -164,6 +180,24 @@ function requireAdminScope(
   }
 
   return { ok: true as const };
+}
+
+function requireClientAdmin(auth: AuthContext | null, clientId: string) {
+  if (!auth) {
+    return { ok: false as const, status: 401, error: "Unauthorized" };
+  }
+
+  const isSuper = auth.roles.some((role) => role.role === "super_admin");
+  if (isSuper) {
+    return { ok: true as const };
+  }
+
+  const isClientAdmin = auth.roles.some((role) => role.role === "client_admin");
+  if (isClientAdmin && auth.user.clientId === clientId) {
+    return { ok: true as const };
+  }
+
+  return { ok: false as const, status: 403, error: "Forbidden" };
 }
 
 app.use("/api/admin", attachAuthContext);
@@ -373,6 +407,9 @@ app.post("/api/auth/login", async (req, res) => {
 
     const authResult = await authenticateUser(authRepo, school.clientId, email, password);
     if (!authResult.ok) {
+      if (authResult.reason === "disabled") {
+        return res.status(403).json({ error: "Account disabled" });
+      }
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
@@ -822,6 +859,237 @@ app.get("/api/admin/:school/submissions/export", async (req, res) => {
     return res.end();
   } catch (error) {
     console.error("Admin submissions export error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/admin/:school/users", async (req, res) => {
+  try {
+    const schoolSlug = req.params.school;
+    const auth = res.locals.auth as AuthContext | null;
+    const config = getConfig();
+    const school = config.schools.find((item) => item.slug === schoolSlug);
+
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const authCheck = requireClientAdmin(auth, school.clientId);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const usersResult = await pool.query(
+      `
+        SELECT id, email, email_verified, is_active, created_at, updated_at
+        FROM users
+        WHERE client_id = $1
+        ORDER BY email ASC
+      `,
+      [school.clientId]
+    );
+
+    const rolesResult = await pool.query(
+      `
+        SELECT user_id, role, school_id
+        FROM user_roles
+        WHERE client_id = $1
+      `,
+      [school.clientId]
+    );
+
+    const rolesByUser = new Map<string, { role: string; schoolId: string | null }[]>();
+    for (const row of rolesResult.rows) {
+      const existing = rolesByUser.get(row.user_id) || [];
+      existing.push({ role: row.role, schoolId: row.school_id ?? null });
+      rolesByUser.set(row.user_id, existing);
+    }
+
+    return res.json({
+      users: usersResult.rows.map((row) => ({
+        id: row.id,
+        email: row.email,
+        emailVerified: row.email_verified,
+        isActive: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        roles: rolesByUser.get(row.id) || []
+      }))
+    });
+  } catch (error) {
+    console.error("Admin users list error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/admin/:school/users", async (req, res) => {
+  try {
+    const schoolSlug = req.params.school;
+    const auth = res.locals.auth as AuthContext | null;
+    const config = getConfig();
+    const school = config.schools.find((item) => item.slug === schoolSlug);
+
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const authCheck = requireClientAdmin(auth, school.clientId);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const parseResult = AdminUserCreateSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
+    }
+
+    const { email, password, role, schoolId } = parseResult.data;
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if ((role === "school_admin" || role === "staff") && !schoolId) {
+      return res.status(400).json({ error: "schoolId is required for school-scoped roles" });
+    }
+
+    if (schoolId) {
+      const schoolMatch = config.schools.find((item) => item.id === schoolId);
+      if (!schoolMatch || schoolMatch.clientId !== school.clientId) {
+        return res.status(400).json({ error: "Invalid school scope" });
+      }
+    }
+
+    const existing = await pool.query(
+      "SELECT id FROM users WHERE client_id = $1 AND LOWER(email) = $2",
+      [school.clientId, normalizedEmail]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: "User already exists" });
+    }
+
+    const passwordHash = await hashPassword(password);
+    const userId = uuidv4();
+    const now = new Date();
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO users (id, email, password_hash, email_verified, client_id, is_active, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
+        [userId, normalizedEmail, passwordHash, false, school.clientId, true, now]
+      );
+      await client.query(
+        `INSERT INTO user_roles (id, user_id, role, school_id, client_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [uuidv4(), userId, role, schoolId || null, school.clientId, now]
+      );
+      await client.query(
+        `INSERT INTO admin_audit_log (id, client_id, school_id, event, payload, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          uuidv4(),
+          school.clientId,
+          school.id,
+          "user_created",
+          { userId, email: normalizedEmail, role, schoolId: schoolId || null },
+          now
+        ]
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    return res.status(201).json({ id: userId, email: normalizedEmail });
+  } catch (error) {
+    console.error("Admin users create error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.patch("/api/admin/:school/users/:userId", async (req, res) => {
+  try {
+    const schoolSlug = req.params.school;
+    const userId = req.params.userId;
+    const auth = res.locals.auth as AuthContext | null;
+    const config = getConfig();
+    const school = config.schools.find((item) => item.slug === schoolSlug);
+
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const authCheck = requireClientAdmin(auth, school.clientId);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const parseResult = AdminUserUpdateSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
+    }
+
+    const { isActive, role, schoolId } = parseResult.data;
+
+    if ((role === "school_admin" || role === "staff") && !schoolId) {
+      return res.status(400).json({ error: "schoolId is required for school-scoped roles" });
+    }
+
+    if (schoolId) {
+      const schoolMatch = config.schools.find((item) => item.id === schoolId);
+      if (!schoolMatch || schoolMatch.clientId !== school.clientId) {
+        return res.status(400).json({ error: "Invalid school scope" });
+      }
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      if (typeof isActive === "boolean") {
+        await client.query(
+          "UPDATE users SET is_active = $1, updated_at = $2 WHERE id = $3 AND client_id = $4",
+          [isActive, new Date(), userId, school.clientId]
+        );
+      }
+
+      if (role) {
+        await client.query("DELETE FROM user_roles WHERE user_id = $1 AND client_id = $2", [
+          userId,
+          school.clientId
+        ]);
+        await client.query(
+          `INSERT INTO user_roles (id, user_id, role, school_id, client_id, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [uuidv4(), userId, role, schoolId || null, school.clientId, new Date()]
+        );
+      }
+
+      await client.query(
+        `INSERT INTO admin_audit_log (id, client_id, school_id, event, payload, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          uuidv4(),
+          school.clientId,
+          school.id,
+          "user_updated",
+          { userId, isActive, role: role || null, schoolId: schoolId || null },
+          new Date()
+        ]
+      );
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    return res.json({ status: "ok" });
+  } catch (error) {
+    console.error("Admin users update error", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
