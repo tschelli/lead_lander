@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import "./styles.css";
 import { hasSessionCookie } from "../../../lib/authCookies";
+import { canEditConfig, type User } from "../../../lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,10 @@ type MetricsResponse = {
   snapshots: { id: string; email: string; status: string; crmLeadId: string | null; updatedAt: string }[];
 };
 
+type AuthMeResponse = {
+  user: User;
+};
+
 export default async function AdminAccount({ params }: { params: { school: string } }) {
   const apiBase =
     process.env.ADMIN_API_BASE_URL ||
@@ -38,6 +43,23 @@ export default async function AdminAccount({ params }: { params: { school: strin
     redirect(`/admin/${params.school}/login`);
   }
   const authHeaders: Record<string, string> = cookie ? { cookie } : {};
+
+  // Fetch user data to check permissions
+  let userHasConfigAccess = false;
+  try {
+    const authResponse = await fetch(`${apiBase}/api/auth/me`, {
+      credentials: "include",
+      headers: authHeaders,
+      cache: "no-store"
+    });
+
+    if (authResponse.ok) {
+      const authData = (await authResponse.json()) as AuthMeResponse;
+      userHasConfigAccess = canEditConfig(authData.user);
+    }
+  } catch (error) {
+    console.error("Failed to fetch user permissions", error);
+  }
 
   const configResponse = await fetch(`${apiBase}/api/admin/${params.school}/config`, {
     credentials: "include",
@@ -178,7 +200,9 @@ export default async function AdminAccount({ params }: { params: { school: strin
         </div>
         <div className="admin-official__actions">
           <a className="admin-btn" href={`/admin/${school.slug}/database`}>Database</a>
-          <a className="admin-official__ghost" href={`/admin/${school.slug}/config`}>Config builder</a>
+          {userHasConfigAccess && (
+            <a className="admin-official__ghost" href={`/admin/${school.slug}/config`}>Config builder</a>
+          )}
           <a className="admin-official__ghost" href={`/admin/${school.slug}/users`}>Users</a>
           <a className="admin-official__ghost" href={`/admin/${school.slug}/audit`}>Audit</a>
         </div>

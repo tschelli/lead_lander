@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ConfigBuilder } from "../ConfigBuilder";
 import "../styles.css";
 import { hasSessionCookie } from "../../../../lib/authCookies";
+import { canEditConfig, type User } from "../../../../lib/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +14,50 @@ type ConfigResponse = {
   };
 };
 
+type AuthMeResponse = {
+  user: User;
+};
+
 export default async function AdminConfig({ params }: { params: { school: string } }) {
   const requestHeaders = headers();
   const cookie = requestHeaders.get("cookie");
   if (!hasSessionCookie(cookie)) {
     redirect(`/admin/${params.school}/login`);
+  }
+
+  const apiBase =
+    process.env.ADMIN_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:4000";
+
+  // Check user permissions
+  const authResponse = await fetch(`${apiBase}/api/auth/me`, {
+    credentials: "include",
+    headers: cookie ? { cookie } : {},
+    cache: "no-store"
+  });
+
+  if (authResponse.status === 401) {
+    redirect(`/admin/${params.school}/login`);
+  }
+
+  const authData = (await authResponse.json()) as AuthMeResponse;
+
+  // Check if user has config access (super_admin or client_admin only)
+  if (!canEditConfig(authData.user)) {
+    return (
+      <div className="admin-shell">
+        <div className="admin-card">
+          <h2>Access Denied</h2>
+          <p className="admin-muted">
+            Config builder access requires Super Admin or Client Admin role.
+          </p>
+          <a className="admin-btn" href={`/admin/${params.school}`}>
+            Back to Dashboard
+          </a>
+        </div>
+      </div>
+    );
   }
 
   const apiBase =
