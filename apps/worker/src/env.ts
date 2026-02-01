@@ -17,6 +17,7 @@ export const env = {
   maxAttempts: Number(process.env.DELIVERY_MAX_ATTEMPTS || 5),
   workerPort: Number(process.env.WORKER_PORT || 5005),
   configCacheTtlSeconds: Number(process.env.CONFIG_CACHE_TTL_SECONDS || 60),
+  adapterTimeoutMs: Number(process.env.ADAPTER_TIMEOUT_MS || 10_000),
   emailEnabled: process.env.EMAIL_ENABLED === "true",
   smtpHost: process.env.SMTP_HOST,
   smtpPort: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587,

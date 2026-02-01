@@ -1,4 +1,5 @@
 import { AdapterResult, CrmAdapter } from "./types";
+import { env } from "../env";
 
 function getValueByPath(value: unknown, path: string) {
   if (!value || typeof value !== "object") return undefined;
@@ -33,11 +34,16 @@ export const webhookAdapter: CrmAdapter = async (payload, connectionConfig) => {
     }
   }
 
+  const controller = new AbortController();
+  const timeoutMs = env.adapterTimeoutMs || 10_000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
     const response = await fetch(endpoint, {
       method: "POST",
       headers,
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controller.signal
     });
 
     const responseBody = await response.text();
@@ -63,6 +69,11 @@ export const webhookAdapter: CrmAdapter = async (payload, connectionConfig) => {
 
     return { success: true, statusCode: response.status, responseBody, crmLeadId };
   } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      return { success: false, error: `Adapter timeout after ${timeoutMs}ms` };
+    }
     return { success: false, error: (error as Error).message };
+  } finally {
+    clearTimeout(timeoutId);
   }
 };
