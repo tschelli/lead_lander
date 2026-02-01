@@ -7,7 +7,7 @@ BEGIN;
 -- Stores custom questions that help route users to appropriate programs
 CREATE TABLE quiz_questions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   school_id UUID REFERENCES schools(id) ON DELETE CASCADE,
   question_text TEXT NOT NULL,
   question_type TEXT NOT NULL DEFAULT 'single_choice', -- 'single_choice', 'multiple_choice', 'text'
@@ -25,7 +25,7 @@ CREATE TABLE quiz_questions (
 -- Stores answer choices with point assignments for program recommendations
 CREATE TABLE quiz_answer_options (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  client_id UUID NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   question_id UUID NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
   option_text TEXT NOT NULL,
   display_order INTEGER NOT NULL DEFAULT 0,
