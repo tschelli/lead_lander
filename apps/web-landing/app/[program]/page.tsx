@@ -43,6 +43,7 @@ type LandingResponse = {
         duration?: string;
         graduationRate?: string;
       };
+      useQuizRouting?: boolean;
     };
     landingCopy: {
       headline: string;
@@ -187,6 +188,7 @@ export default async function LandingPage({
           campusOptions={campusOptionsWithFallback}
           initialAnswers={{ program_interest: program.id }}
           ctaText={landingCopy.ctaText}
+          enableQuiz={program.useQuizRouting || false}
         />
 
         {/* Additional Content Sections - Only shown for "full" template */}

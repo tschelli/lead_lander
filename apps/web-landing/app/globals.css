@@ -130,6 +130,13 @@ main {
   color: rgba(27, 27, 27, 0.75);
 }
 
+.field-help {
+  font-size: 0.8rem;
+  color: rgba(27, 27, 27, 0.6);
+  margin: -4px 0 8px 0;
+  line-height: 1.4;
+}
+
 .field-stack {
   display: flex;
   flex-direction: column;
