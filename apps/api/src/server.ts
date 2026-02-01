@@ -132,6 +132,17 @@ const AdminUserUpdateSchema = z.object({
   schoolId: z.string().min(1).nullable().optional()
 });
 
+const AdminDraftSchema = z.object({
+  programId: z.string().min(1),
+  landingCopy: z.object({
+    headline: z.string().min(1),
+    subheadline: z.string().min(1),
+    body: z.string().min(1),
+    ctaText: z.string().min(1)
+  }),
+  action: z.enum(["draft", "submit"])
+});
+
 const SuperClientCreateSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1)
@@ -1041,6 +1052,97 @@ app.post("/api/admin/:school/users", async (req, res) => {
     return res.status(201).json({ id: userId, email: normalizedEmail });
   } catch (error) {
     console.error("Admin users create error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/admin/drafts", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    if (!auth) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const parseResult = AdminDraftSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
+    }
+
+    const { programId, landingCopy, action } = parseResult.data;
+    const config = getConfig();
+    const program = config.programs.find((item) => item.id === programId);
+    if (!program) {
+      return res.status(404).json({ error: "Program not found" });
+    }
+
+    const school = config.schools.find((item) => item.id === program.schoolId);
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const authCheck = requireAdminScope(auth, config, school);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    await pool.query(
+      `INSERT INTO admin_audit_log (id, client_id, school_id, event, payload, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        uuidv4(),
+        school.clientId,
+        school.id,
+        action === "submit" ? "config_submitted" : "config_draft_saved",
+        { programId, landingCopy },
+        new Date()
+      ]
+    );
+
+    return res.json({ status: "ok" });
+  } catch (error) {
+    console.error("Admin draft save error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/admin/:school/audit", async (req, res) => {
+  try {
+    const schoolSlug = req.params.school;
+    const auth = res.locals.auth as AuthContext | null;
+    const config = getConfig();
+    const school = config.schools.find((item) => item.slug === schoolSlug);
+
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const authCheck = requireAdminScope(auth, config, school);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const result = await pool.query(
+      `
+        SELECT id, event, payload, created_at
+        FROM admin_audit_log
+        WHERE client_id = $1 AND school_id = $2
+        ORDER BY created_at DESC
+        LIMIT $3
+      `,
+      [school.clientId, school.id, limit]
+    );
+
+    return res.json({
+      rows: result.rows.map((row) => ({
+        id: row.id,
+        event: row.event,
+        payload: row.payload,
+        createdAt: row.created_at
+      }))
+    });
+  } catch (error) {
+    console.error("Admin audit list error", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

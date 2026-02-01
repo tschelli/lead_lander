@@ -30,6 +30,7 @@ function toYaml(lines: Record<string, string>) {
 export function ConfigBuilder({ programs }: ConfigBuilderProps) {
   const [selectedId, setSelectedId] = useState(programs[0]?.id || "");
   const [status, setStatus] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const selected = useMemo(
     () => programs.find((program) => program.id === selectedId) || programs[0],
@@ -66,6 +67,34 @@ export function ConfigBuilder({ programs }: ConfigBuilderProps) {
   };
 
   const yamlPreview = toYaml(draft);
+
+  const handleSave = async (action: "draft" | "submit") => {
+    setSaving(true);
+    setStatus(null);
+    try {
+      const response = await fetch("/api/admin/drafts", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          programId: selectedId,
+          landingCopy: draft,
+          action
+        })
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Save failed");
+      }
+      setStatus(action === "draft" ? "Draft saved." : "Submitted for owner approval.");
+    } catch (error) {
+      setStatus((error as Error).message || "Save failed.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="admin-builder">
@@ -127,15 +156,17 @@ export function ConfigBuilder({ programs }: ConfigBuilderProps) {
         <div className="admin-builder__actions">
           <button
             className="admin-btn"
-            onClick={() => setStatus("Draft saved locally. Submit for approval when ready.")}
+            onClick={() => handleSave("draft")}
+            disabled={saving}
           >
-            Save draft
+            {saving ? "Saving..." : "Save draft"}
           </button>
           <button
             className="admin-official__ghost"
-            onClick={() => setStatus("Submitted for owner approval.")}
+            onClick={() => handleSave("submit")}
+            disabled={saving}
           >
-            Submit for approval
+            {saving ? "Submitting..." : "Submit for approval"}
           </button>
           {status && <p className="admin-muted">{status}</p>}
         </div>
