@@ -163,129 +163,152 @@ const worker = new Worker(
       [attemptId, clientId, submissionId, attemptNumber, "started", jobType, stepIndex, createdAt]
     );
 
-    const config = await getConfigForClient(clientId);
-    const entities = resolveEntitiesByIds(
-      config,
-      submission.school_id,
-      submission.campus_id,
-      submission.program_id
-    );
+    try {
+      const config = await getConfigForClient(clientId);
+      const entities = resolveEntitiesByIds(
+        config,
+        submission.school_id,
+        submission.campus_id,
+        submission.program_id
+      );
 
-    if (!entities) {
-      await updateSubmissionStatus(clientId, submissionId, "failed");
-      await logAudit(clientId, submissionId, "failed", { reason: "Missing config entities" });
-      console.error(`[${submissionId}] Missing config entities`);
-      throw new Error("Missing config entities");
-    }
+      if (!entities) {
+        await updateSubmissionStatus(clientId, submissionId, "failed");
+        await logAudit(clientId, submissionId, "failed", { reason: "Missing config entities" });
+        console.error(`[${submissionId}] Missing config entities`);
+        throw new Error("Missing config entities");
+      }
 
-    const crmConnection = config.crmConnections.find(
-      (connection) => connection.id === entities.school.crmConnectionId
-    );
+      const crmConnection = config.crmConnections.find(
+        (connection) => connection.id === entities.school.crmConnectionId
+      );
 
-    if (!crmConnection) {
-      await updateSubmissionStatus(clientId, submissionId, "failed");
-      await logAudit(clientId, submissionId, "failed", { reason: "Missing CRM connection" });
-      console.error(`[${submissionId}] Missing CRM connection`);
-      throw new Error("Missing CRM connection");
-    }
+      if (!crmConnection) {
+        await updateSubmissionStatus(clientId, submissionId, "failed");
+        await logAudit(clientId, submissionId, "failed", { reason: "Missing CRM connection" });
+        console.error(`[${submissionId}] Missing CRM connection`);
+        throw new Error("Missing CRM connection");
+      }
 
-    if (jobType === "update_lead" && !submission.crm_lead_id) {
-      console.error(`[${submissionId}] Missing crm_lead_id for update`);
-      throw new Error("Missing crm_lead_id");
-    }
+      if (jobType === "update_lead" && !submission.crm_lead_id) {
+        console.error(`[${submissionId}] Missing crm_lead_id for update`);
+        throw new Error("Missing crm_lead_id");
+      }
 
-    const payload: DeliveryPayload = {
-      submissionId,
-      idempotencyKey: submission.idempotency_key,
-      action,
-      crmLeadId: submission.crm_lead_id,
-      stepIndex: stepIndex || null,
-      schoolId: submission.school_id,
-      campusId: submission.campus_id,
-      programId: submission.program_id,
-      contact: {
-        firstName: submission.first_name,
-        lastName: submission.last_name,
-        email: submission.email,
-        phone: submission.phone
-      },
-      answers: submission.answers || {},
-      metadata: submission.metadata || {},
-      consent: {
-        consented: submission.consented,
-        textVersion: submission.consent_text_version,
-        timestamp: submission.consent_timestamp
-      },
-      routingTags: entities.campus?.routingTags || []
-    };
+      const payload: DeliveryPayload = {
+        submissionId,
+        idempotencyKey: submission.idempotency_key,
+        action,
+        crmLeadId: submission.crm_lead_id,
+        stepIndex: stepIndex || null,
+        schoolId: submission.school_id,
+        campusId: submission.campus_id,
+        programId: submission.program_id,
+        contact: {
+          firstName: submission.first_name,
+          lastName: submission.last_name,
+          email: submission.email,
+          phone: submission.phone
+        },
+        answers: submission.answers || {},
+        metadata: submission.metadata || {},
+        consent: {
+          consented: submission.consented,
+          textVersion: submission.consent_text_version,
+          timestamp: submission.consent_timestamp
+        },
+        routingTags: entities.campus?.routingTags || []
+      };
 
-    let result: AdapterResult;
+      let result: AdapterResult;
 
-    if (crmConnection.type === "webhook") {
-      result = await webhookAdapter(payload, crmConnection.config || {});
-    } else {
-      result = await genericAdapter(payload, crmConnection.config || {});
-    }
+      if (crmConnection.type === "webhook") {
+        result = await webhookAdapter(payload, crmConnection.config || {});
+      } else {
+        result = await genericAdapter(payload, crmConnection.config || {});
+      }
 
-    if (jobType === "create_lead" && result.success && !result.crmLeadId) {
-      result = { success: false, error: "Missing crm_lead_id from CRM response" };
-    }
+      if (jobType === "create_lead" && result.success && !result.crmLeadId) {
+        result = { success: false, error: "Missing crm_lead_id from CRM response" };
+      }
 
-    await pool.query(
-      `UPDATE delivery_attempts
-       SET status = $1, response_code = $2, response_body = $3, error = $4, updated_at = $5
-       WHERE id = $6`,
-      [
-        result.success ? "delivered" : "failed",
-        result.statusCode || null,
-        truncate(result.responseBody),
-        result.error || null,
-        new Date(),
-        attemptId
-      ]
-    );
+      await pool.query(
+        `UPDATE delivery_attempts
+         SET status = $1, response_code = $2, response_body = $3, error = $4, updated_at = $5
+         WHERE id = $6`,
+        [
+          result.success ? "delivered" : "failed",
+          result.statusCode || null,
+          truncate(result.responseBody),
+          result.error || null,
+          new Date(),
+          attemptId
+        ]
+      );
 
-    if (!result.success) {
+      if (!result.success) {
+        const maxReached = attemptNumber >= env.maxAttempts;
+        if (maxReached) {
+          await updateSubmissionStatus(clientId, submissionId, "failed");
+          await logAudit(clientId, submissionId, "failed", { reason: result.error || "Delivery failed" });
+          console.error(`[${submissionId}] Delivery failed after max attempts`);
+        } else {
+          await logAudit(clientId, submissionId, "retry_scheduled", { attemptNumber });
+        }
+
+        throw new Error(result.error || `Delivery failed with status ${result.statusCode}`);
+      }
+
+      if (jobType === "create_lead" && result.crmLeadId) {
+        await pool.query("UPDATE submissions SET crm_lead_id = $1 WHERE id = $2 AND client_id = $3", [
+          result.crmLeadId,
+          submissionId,
+          clientId
+        ]);
+      }
+
+      await pool.query(
+        "UPDATE submissions SET status = $1, delivered_at = $2, updated_at = $2 WHERE id = $3 AND client_id = $4",
+        ["delivered", new Date(), submissionId, clientId]
+      );
+
+      await logAudit(clientId, submissionId, "delivered", { statusCode: result.statusCode });
+      console.log(`[${submissionId}] Delivery succeeded`);
+
+      const landingPage = config.landingPages.find(
+        (item) => item.schoolId === submission.school_id && item.programId === submission.program_id
+      );
+
+      const notifications = landingPage?.notifications || entities.campus?.notifications;
+
+      if (notifications?.enabled) {
+        const campusName = entities.campus?.name || "Unspecified campus";
+        const subject = `New lead: ${entities.program.name} (${campusName})`;
+        const body = buildEmailBody(payload);
+        await sendNotificationEmail(notifications.recipients, subject, body);
+      }
+
+      return { delivered: true };
+    } catch (error) {
+      await pool.query(
+        `UPDATE delivery_attempts
+         SET status = $1, error = $2, updated_at = $3
+         WHERE id = $4`,
+        ["failed", truncate((error as Error)?.message), new Date(), attemptId]
+      );
+
       const maxReached = attemptNumber >= env.maxAttempts;
       if (maxReached) {
         await updateSubmissionStatus(clientId, submissionId, "failed");
-        await logAudit(clientId, submissionId, "failed", { reason: result.error || "Delivery failed" });
-        console.error(`[${submissionId}] Delivery failed after max attempts`);
+        await logAudit(clientId, submissionId, "failed", {
+          reason: (error as Error)?.message || "Delivery failed"
+        });
+      } else {
+        await logAudit(clientId, submissionId, "retry_scheduled", { attemptNumber });
       }
 
-      throw new Error(result.error || `Delivery failed with status ${result.statusCode}`);
+      throw error;
     }
-
-    if (jobType === "create_lead" && result.crmLeadId) {
-      await pool.query("UPDATE submissions SET crm_lead_id = $1 WHERE id = $2 AND client_id = $3", [
-        result.crmLeadId,
-        submissionId,
-        clientId
-      ]);
-    }
-
-    await pool.query(
-      "UPDATE submissions SET status = $1, delivered_at = $2, updated_at = $2 WHERE id = $3 AND client_id = $4",
-      ["delivered", new Date(), submissionId, clientId]
-    );
-
-    await logAudit(clientId, submissionId, "delivered", { statusCode: result.statusCode });
-    console.log(`[${submissionId}] Delivery succeeded`);
-
-    const landingPage = config.landingPages.find(
-      (item) => item.schoolId === submission.school_id && item.programId === submission.program_id
-    );
-
-    const notifications = landingPage?.notifications || entities.campus?.notifications;
-
-    if (notifications?.enabled) {
-      const campusName = entities.campus?.name || "Unspecified campus";
-      const subject = `New lead: ${entities.program.name} (${campusName})`;
-      const body = buildEmailBody(payload);
-      await sendNotificationEmail(notifications.recipients, subject, body);
-    }
-
-    return { delivered: true };
   },
   {
     connection: {
