@@ -1,16 +1,50 @@
-import { loadConfig } from "@lead_lander/config-schema";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { resolveConfigDir } from "../../../../lib/configDir";
 import { hasSessionCookie } from "../../../../lib/authCookies";
 import { UsersView } from "./UsersView";
 import "../styles.css";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminUsers({ params }: { params: { school: string } }) {
-  const config = loadConfig(resolveConfigDir());
-  const school = config.schools.find((item) => item.slug === params.school);
+type ConfigResponse = {
+  config: {
+    schools: { id: string; name: string; slug: string; branding: { logoUrl?: string } }[];
+  };
+};
+
+type SchoolsResponse = {
+  schools: { id: string; name: string }[];
+};
+
+export default async function AdminUsers({ params }: { params: { school: string } }) {
+  const requestHeaders = headers();
+  const cookie = requestHeaders.get("cookie");
+  if (!hasSessionCookie(cookie)) {
+    redirect(`/admin/${params.school}/login`);
+  }
+
+  const apiBase =
+    process.env.ADMIN_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:4000";
+  const authHeaders: Record<string, string> = cookie ? { cookie } : {};
+
+  const configResponse = await fetch(`${apiBase}/api/admin/${params.school}/config`, {
+    credentials: "include",
+    headers: authHeaders,
+    cache: "no-store"
+  });
+
+  if (configResponse.status === 401 || configResponse.status === 403) {
+    redirect(`/admin/${params.school}/login`);
+  }
+
+  if (!configResponse.ok) {
+    throw new Error("Failed to load config");
+  }
+
+  const configData = (await configResponse.json()) as ConfigResponse;
+  const school = configData.config.schools.find((item) => item.slug === params.school);
 
   if (!school) {
     return (
@@ -23,15 +57,22 @@ export default function AdminUsers({ params }: { params: { school: string } }) {
     );
   }
 
-  const requestHeaders = headers();
-  const cookie = requestHeaders.get("cookie");
-  if (!hasSessionCookie(cookie)) {
-    redirect(`/admin/${school.slug}/login`);
+  const schoolsResponse = await fetch(`${apiBase}/api/admin/${params.school}/schools`, {
+    credentials: "include",
+    headers: authHeaders,
+    cache: "no-store"
+  });
+
+  if (schoolsResponse.status === 401 || schoolsResponse.status === 403) {
+    redirect(`/admin/${params.school}/login`);
   }
 
-  const schools = config.schools
-    .filter((item) => item.clientId === school.clientId)
-    .map((item) => ({ id: item.id, name: item.name }));
+  if (!schoolsResponse.ok) {
+    throw new Error("Failed to load schools");
+  }
+
+  const schoolsData = (await schoolsResponse.json()) as SchoolsResponse;
+  const schools = schoolsData.schools.map((item) => ({ id: item.id, name: item.name }));
 
   return (
     <div className="admin-shell admin-official">

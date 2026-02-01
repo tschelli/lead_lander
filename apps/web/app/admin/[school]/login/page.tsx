@@ -1,14 +1,22 @@
-import { loadConfig } from "@lead_lander/config-schema";
-import { resolveConfigDir } from "../../../../lib/configDir";
 import { LoginForm } from "./LoginForm";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminSchoolLogin({ params }: { params: { school: string } }) {
-  const config = loadConfig(resolveConfigDir());
-  const school = config.schools.find((item) => item.slug === params.school);
+type SchoolResponse = {
+  school: { id: string; slug: string; name: string; branding: { logoUrl?: string } };
+};
 
-  if (!school) {
+export default async function AdminSchoolLogin({ params }: { params: { school: string } }) {
+  const apiBase =
+    process.env.ADMIN_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:4000";
+
+  const response = await fetch(`${apiBase}/api/public/schools/${params.school}`, {
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
     return (
       <div className="admin-shell">
         <div className="admin-card">
@@ -19,5 +27,6 @@ export default function AdminSchoolLogin({ params }: { params: { school: string 
     );
   }
 
-  return <LoginForm schoolSlug={school.slug} schoolName={school.name} />;
+  const data = (await response.json()) as SchoolResponse;
+  return <LoginForm schoolSlug={data.school.slug} schoolName={data.school.name} />;
 }

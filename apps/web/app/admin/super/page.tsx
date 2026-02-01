@@ -1,18 +1,28 @@
-import { loadConfig } from "@lead_lander/config-schema";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { resolveConfigDir } from "../../../lib/configDir";
 import { hasSessionCookie } from "../../../lib/authCookies";
 import { SuperAdminView } from "./SuperAdminView";
 import "../admin.css";
 
 export const dynamic = "force-dynamic";
 
-export default function SuperAdminPage() {
-  const config = loadConfig(resolveConfigDir());
+type SchoolsResponse = {
+  schools: { id: string; slug: string; name: string }[];
+};
+
+export default async function SuperAdminPage() {
   const requestHeaders = headers();
   const cookie = requestHeaders.get("cookie");
-  const fallbackSchool = config.schools[0];
+
+  const apiBase =
+    process.env.ADMIN_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:4000";
+
+  const schoolsResponse = await fetch(`${apiBase}/api/public/schools`, { cache: "no-store" });
+  const schoolsData = schoolsResponse.ok ? ((await schoolsResponse.json()) as SchoolsResponse) : { schools: [] };
+  const fallbackSchool = schoolsData.schools[0];
+
   if (!hasSessionCookie(cookie)) {
     if (fallbackSchool) {
       redirect(`/admin/${fallbackSchool.slug}/login?next=/admin/super`);
@@ -20,7 +30,11 @@ export default function SuperAdminPage() {
     redirect("/admin");
   }
 
-  const schools = config.schools.map((school) => ({ id: school.id, name: school.name }));
+  const schools = schoolsData.schools.map((school) => ({
+    id: school.id,
+    slug: school.slug,
+    name: school.name
+  }));
 
   return (
     <div className="admin-shell admin-official">

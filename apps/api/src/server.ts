@@ -22,7 +22,7 @@ import {
 } from "./auth";
 import { type AuthContext, type UserRole } from "./authz";
 import { getAllowedSchools } from "./tenantScope";
-import { resolveEntitiesByIds, type Config } from "@lead_lander/config-schema";
+import { resolveEntitiesByIds, resolveLandingPageBySlugs, type Config } from "@lead_lander/config-schema";
 
 const app = express();
 
@@ -581,6 +581,69 @@ app.post("/api/auth/reset-password", async (req, res) => {
 
 app.get("/healthz", (_req, res) => {
   res.json({ status: "ok" });
+});
+
+app.get("/api/public/schools", async (_req, res) => {
+  try {
+    const result = await pool.query("SELECT id, slug, name FROM schools ORDER BY name ASC");
+    return res.json({
+      schools: result.rows.map((row) => ({
+        id: row.id,
+        slug: row.slug,
+        name: row.name
+      }))
+    });
+  } catch (error) {
+    console.error("Public schools error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/public/schools/:school", async (req, res) => {
+  try {
+    const schoolSlug = req.params.school;
+    const school = await getSchoolBySlug(schoolSlug);
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+    return res.json({
+      school: {
+        id: school.id,
+        slug: school.slug,
+        name: school.name,
+        branding: school.branding,
+        compliance: school.compliance
+      }
+    });
+  } catch (error) {
+    console.error("Public school error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/public/landing/:school/:program", async (req, res) => {
+  try {
+    const schoolSlug = req.params.school;
+    const programSlug = req.params.program;
+    const school = await getSchoolBySlug(schoolSlug);
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const config = await getConfigForClient(school.client_id);
+    const resolved = resolveLandingPageBySlugs(config, schoolSlug, programSlug);
+    if (!resolved) {
+      return res.status(404).json({ error: "Landing page not found" });
+    }
+
+    const campuses = config.campuses.filter((item) => item.schoolId === school.id);
+    const programs = config.programs.filter((item) => item.schoolId === school.id);
+
+    return res.json({ landing: resolved, campuses, programs });
+  } catch (error) {
+    console.error("Public landing error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 app.get("/api/admin/:school/metrics", async (req, res) => {
@@ -1143,6 +1206,34 @@ app.get("/api/admin/:school/config", async (req, res) => {
     return res.json({ config: schoolConfig });
   } catch (error) {
     console.error("Admin config fetch error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/admin/:school/schools", async (req, res) => {
+  try {
+    const schoolSlug = req.params.school;
+    const auth = res.locals.auth as AuthContext | null;
+    const school = await getSchoolBySlug(schoolSlug);
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const config = await getConfigForClient(school.client_id);
+    const authCheck = requireAdminScope(auth, config, { id: school.id });
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    return res.json({
+      schools: config.schools.map((item) => ({
+        id: item.id,
+        slug: item.slug,
+        name: item.name
+      }))
+    });
+  } catch (error) {
+    console.error("Admin schools error", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

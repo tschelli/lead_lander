@@ -1,16 +1,46 @@
-import { loadConfig } from "@lead_lander/config-schema";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { resolveConfigDir } from "../../../../lib/configDir";
 import { hasSessionCookie } from "../../../../lib/authCookies";
 import { AuditView } from "./AuditView";
 import "../styles.css";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminAudit({ params }: { params: { school: string } }) {
-  const config = loadConfig(resolveConfigDir());
-  const school = config.schools.find((item) => item.slug === params.school);
+type ConfigResponse = {
+  config: {
+    schools: { id: string; name: string; slug: string; branding: { logoUrl?: string } }[];
+  };
+};
+
+export default async function AdminAudit({ params }: { params: { school: string } }) {
+  const requestHeaders = headers();
+  const cookie = requestHeaders.get("cookie");
+  if (!hasSessionCookie(cookie)) {
+    redirect(`/admin/${params.school}/login`);
+  }
+
+  const apiBase =
+    process.env.ADMIN_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:4000";
+  const authHeaders: Record<string, string> = cookie ? { cookie } : {};
+
+  const configResponse = await fetch(`${apiBase}/api/admin/${params.school}/config`, {
+    credentials: "include",
+    headers: authHeaders,
+    cache: "no-store"
+  });
+
+  if (configResponse.status === 401 || configResponse.status === 403) {
+    redirect(`/admin/${params.school}/login`);
+  }
+
+  if (!configResponse.ok) {
+    throw new Error("Failed to load config");
+  }
+
+  const configData = (await configResponse.json()) as ConfigResponse;
+  const school = configData.config.schools.find((item) => item.slug === params.school);
 
   if (!school) {
     return (
@@ -21,12 +51,6 @@ export default function AdminAudit({ params }: { params: { school: string } }) {
         </div>
       </div>
     );
-  }
-
-  const requestHeaders = headers();
-  const cookie = requestHeaders.get("cookie");
-  if (!hasSessionCookie(cookie)) {
-    redirect(`/admin/${school.slug}/login`);
   }
 
   return (

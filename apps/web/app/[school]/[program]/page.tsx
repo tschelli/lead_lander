@@ -1,16 +1,71 @@
-import { loadConfig, resolveLandingPageBySlugs } from "@lead_lander/config-schema";
-import { resolveConfigDir } from "../../../lib/configDir";
 import { FormEngine } from "../../../components/FormEngine";
 
 export const dynamic = "force-dynamic";
 
-export default function LandingPage({
+type LandingResponse = {
+  landing: {
+    school: {
+      id: string;
+      name: string;
+      branding: {
+        logoUrl?: string;
+        colors: {
+          primary: string;
+          secondary: string;
+          accent?: string;
+          background?: string;
+          text?: string;
+        };
+      };
+      compliance: {
+        disclaimerText: string;
+        version: string;
+      };
+    };
+    program: {
+      id: string;
+      name: string;
+      availableCampuses?: string[];
+    };
+    landingCopy: {
+      headline: string;
+      subheadline: string;
+      body: string;
+      ctaText: string;
+    };
+    questionOverrides?: Record<string, unknown>;
+  };
+  campuses?: { id: string; name: string; schoolId: string }[];
+  programs?: { id: string; name: string; schoolId: string }[];
+};
+
+export default async function LandingPage({
   params
 }: {
   params: { school: string; program: string };
 }) {
-  const config = loadConfig(resolveConfigDir());
-  const resolved = resolveLandingPageBySlugs(config, params.school, params.program);
+  const apiBase =
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.ADMIN_API_BASE_URL ||
+    "http://localhost:4000";
+
+  const response = await fetch(`${apiBase}/api/public/landing/${params.school}/${params.program}`, {
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    return (
+      <main>
+        <div className="form-card">
+          <h2>Landing page not found</h2>
+          <p>Check the URL or configuration.</p>
+        </div>
+      </main>
+    );
+  }
+
+  const data = (await response.json()) as LandingResponse;
+  const resolved = data.landing;
 
   if (!resolved) {
     return (
@@ -25,7 +80,7 @@ export default function LandingPage({
 
   const { school, program, landingCopy, questionOverrides } = resolved;
 
-  const campusOptions = config.campuses
+  const campusOptions = (data.campuses || [])
     .filter((campus) => {
       if (campus.schoolId !== school.id) return false;
       if (!program.availableCampuses || program.availableCampuses.length === 0) {
@@ -37,7 +92,7 @@ export default function LandingPage({
 
   const campusLabels = campusOptions.map((option) => option.label).join(", ");
 
-  const programOptions = config.programs
+  const programOptions = (data.programs || [])
     .filter((item) => item.schoolId === school.id)
     .map((item) => ({ label: item.name, value: item.id }));
 
