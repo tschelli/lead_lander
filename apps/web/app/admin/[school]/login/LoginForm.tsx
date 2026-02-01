@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type LoginFormProps = {
   schoolSlug: string;
@@ -10,6 +10,7 @@ type LoginFormProps = {
 
 export function LoginForm({ schoolSlug, schoolName }: LoginFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -40,7 +41,8 @@ export function LoginForm({ schoolSlug, schoolName }: LoginFormProps) {
         throw new Error(message || "Login failed");
       }
 
-      router.replace(`/admin/${schoolSlug}`);
+      const next = searchParams.get("next");
+      router.replace(next || `/admin/${schoolSlug}`);
     } catch (err) {
       setError((err as Error).message || "Login failed");
     } finally {

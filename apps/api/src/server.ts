@@ -132,6 +132,30 @@ const AdminUserUpdateSchema = z.object({
   schoolId: z.string().min(1).nullable().optional()
 });
 
+const SuperClientCreateSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1)
+});
+
+const SuperSchoolCreateSchema = z.object({
+  id: z.string().min(1),
+  slug: z.string().min(1),
+  name: z.string().min(1),
+  crmConnectionId: z.string().min(1)
+});
+
+const SuperProgramCreateSchema = z.object({
+  id: z.string().min(1),
+  schoolId: z.string().min(1),
+  slug: z.string().min(1),
+  name: z.string().min(1)
+});
+
+const SuperAdminUserCreateSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8)
+});
+
 async function loadAuthContext(req: express.Request): Promise<AuthContext | null> {
   const token = req.cookies?.[env.authCookieName];
   if (!token) return null;
@@ -200,7 +224,19 @@ function requireClientAdmin(auth: AuthContext | null, clientId: string) {
   return { ok: false as const, status: 403, error: "Forbidden" };
 }
 
+function requireSuperAdmin(auth: AuthContext | null) {
+  if (!auth) {
+    return { ok: false as const, status: 401, error: "Unauthorized" };
+  }
+  const isSuper = auth.roles.some((role) => role.role === "super_admin");
+  if (!isSuper) {
+    return { ok: false as const, status: 403, error: "Forbidden" };
+  }
+  return { ok: true as const };
+}
+
 app.use("/api/admin", attachAuthContext);
+app.use("/api/super", attachAuthContext);
 
 const SubmitSchema = z.object({
   firstName: z.string().min(1),
@@ -1090,6 +1126,243 @@ app.patch("/api/admin/:school/users/:userId", async (req, res) => {
     return res.json({ status: "ok" });
   } catch (error) {
     console.error("Admin users update error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/super/clients", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const result = await pool.query(
+      `
+        SELECT c.id, c.name,
+          COUNT(DISTINCT s.id) AS schools,
+          COUNT(DISTINCT p.id) AS programs,
+          COUNT(DISTINCT u.id) AS users
+        FROM clients c
+        LEFT JOIN schools s ON s.client_id = c.id
+        LEFT JOIN programs p ON p.client_id = c.id
+        LEFT JOIN users u ON u.client_id = c.id
+        GROUP BY c.id
+        ORDER BY c.name
+      `
+    );
+
+    return res.json({
+      clients: result.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        schools: Number(row.schools || 0),
+        programs: Number(row.programs || 0),
+        users: Number(row.users || 0)
+      }))
+    });
+  } catch (error) {
+    console.error("Super clients list error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/super/clients", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const parseResult = SuperClientCreateSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
+    }
+
+    const { id, name } = parseResult.data;
+    const now = new Date();
+    await pool.query(
+      `INSERT INTO clients (id, name, created_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name`,
+      [id, name, now]
+    );
+
+    await pool.query(
+      `INSERT INTO admin_audit_log (id, client_id, school_id, event, payload, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), id, null, "client_created", { id, name }, now]
+    );
+
+    return res.status(201).json({ id, name });
+  } catch (error) {
+    console.error("Super clients create error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/super/clients/:clientId/schools", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const clientId = req.params.clientId;
+    const parseResult = SuperSchoolCreateSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
+    }
+
+    const { id, slug, name, crmConnectionId } = parseResult.data;
+    const now = new Date();
+    await pool.query(
+      `INSERT INTO schools (id, client_id, slug, name, branding, compliance, crm_connection_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+       ON CONFLICT (id) DO UPDATE SET
+         client_id = EXCLUDED.client_id,
+         slug = EXCLUDED.slug,
+         name = EXCLUDED.name,
+         crm_connection_id = EXCLUDED.crm_connection_id,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        id,
+        clientId,
+        slug,
+        name,
+        JSON.stringify({ colors: { primary: "#111827", secondary: "#4b5563" } }),
+        JSON.stringify({ disclaimerText: "TBD", version: "draft" }),
+        crmConnectionId,
+        now
+      ]
+    );
+
+    await pool.query(
+      `INSERT INTO admin_audit_log (id, client_id, school_id, event, payload, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), clientId, id, "school_created", { id, slug, name }, now]
+    );
+
+    return res.status(201).json({ id, slug, name });
+  } catch (error) {
+    console.error("Super schools create error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/super/clients/:clientId/programs", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const clientId = req.params.clientId;
+    const parseResult = SuperProgramCreateSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
+    }
+
+    const { id, schoolId, slug, name } = parseResult.data;
+    const now = new Date();
+    await pool.query(
+      `INSERT INTO programs (id, client_id, school_id, slug, name, landing_copy, question_overrides, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+       ON CONFLICT (id) DO UPDATE SET
+         client_id = EXCLUDED.client_id,
+         school_id = EXCLUDED.school_id,
+         slug = EXCLUDED.slug,
+         name = EXCLUDED.name,
+         landing_copy = EXCLUDED.landing_copy,
+         question_overrides = EXCLUDED.question_overrides,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        id,
+        clientId,
+        schoolId,
+        slug,
+        name,
+        JSON.stringify({ headline: name, subheadline: "TBD", body: "TBD", ctaText: "Get Program Info" }),
+        JSON.stringify(null),
+        now
+      ]
+    );
+
+    await pool.query(
+      `INSERT INTO admin_audit_log (id, client_id, school_id, event, payload, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), clientId, schoolId, "program_created", { id, slug, name }, now]
+    );
+
+    return res.status(201).json({ id, slug, name });
+  } catch (error) {
+    console.error("Super programs create error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/api/super/clients/:clientId/admin-user", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const clientId = req.params.clientId;
+    const parseResult = SuperAdminUserCreateSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
+    }
+
+    const { email, password } = parseResult.data;
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existing = await pool.query(
+      "SELECT id FROM users WHERE client_id = $1 AND LOWER(email) = $2",
+      [clientId, normalizedEmail]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: "User already exists" });
+    }
+
+    const passwordHash = await hashPassword(password);
+    const userId = uuidv4();
+    const now = new Date();
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO users (id, email, password_hash, email_verified, client_id, is_active, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
+        [userId, normalizedEmail, passwordHash, false, clientId, true, now]
+      );
+      await client.query(
+        `INSERT INTO user_roles (id, user_id, role, school_id, client_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [uuidv4(), userId, "client_admin", null, clientId, now]
+      );
+      await client.query(
+        `INSERT INTO admin_audit_log (id, client_id, school_id, event, payload, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [uuidv4(), clientId, null, "client_admin_created", { userId, email: normalizedEmail }, now]
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    return res.status(201).json({ id: userId, email: normalizedEmail });
+  } catch (error) {
+    console.error("Super admin user create error", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
