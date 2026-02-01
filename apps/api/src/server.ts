@@ -612,24 +612,22 @@ app.get("/healthz", (_req, res) => {
 });
 
 // SECURITY: Endpoint removed - lists all schools which is information disclosure
-// This will be replaced in Phase 1 repository split with:
-// - Client-scoped endpoint for admins to list their schools
-// - Super admin endpoint for listing all schools (with auth check)
-// app.get("/api/public/schools", async (_req, res) => {
-//   try {
-//     const result = await pool.query("SELECT id, slug, name FROM schools ORDER BY name ASC");
-//     return res.json({
-//       schools: result.rows.map((row) => ({
-//         id: row.id,
-//         slug: row.slug,
-//         name: row.name
-//       }))
-//     });
-//   } catch (error) {
-//     console.error("Public schools error", error);
-//     return res.status(500).json({ error: "Internal server error" });
-//   }
-// });
+// Public schools list endpoint for admin dashboard homepage
+app.get("/api/public/schools", async (_req, res) => {
+  try {
+    const result = await pool.query("SELECT id, slug, name FROM schools ORDER BY name ASC");
+    return res.json({
+      schools: result.rows.map((row) => ({
+        id: row.id,
+        slug: row.slug,
+        name: row.name
+      }))
+    });
+  } catch (error) {
+    console.error("Public schools error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 app.get("/api/public/schools/:school", async (req, res) => {
   try {

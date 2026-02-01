@@ -26,7 +26,7 @@ export default async function AdminIndex() {
 
       <nav className="admin-nav">
         {data.schools.map((school) => (
-          <a key={school.id} href={`/admin/${school.slug}`}>
+          <a key={school.id} href={`/${school.slug}`}>
             {school.name}
           </a>
         ))}
