@@ -23,6 +23,7 @@ import {
 import { type AuthContext, type UserRole } from "./authz";
 import { getAllowedSchools } from "./tenantScope";
 import { resolveEntitiesByIds, resolveLandingPageBySlugs, type Config } from "@lead_lander/config-schema";
+import { requireSchoolAccess, requireClientAccess } from "./middleware/clientScope";
 
 const app = express();
 
@@ -524,12 +525,36 @@ app.get("/api/auth/me", async (req, res) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
+    // Get accessible schools for this user
+    const rolesResult = await pool.query(
+      "SELECT role, school_id FROM user_roles WHERE user_id = $1",
+      [user.id]
+    );
+
+    const roles = rolesResult.rows.map((row) => ({
+      role: row.role,
+      schoolId: row.school_id ?? null
+    })) as UserRole[];
+
+    const auth: AuthContext = { user, roles };
+
+    let accessibleSchools: Array<{ id: string; slug: string; name: string }> = [];
+    if (user.clientId) {
+      const config = await getConfigForClient(user.clientId);
+      accessibleSchools = getAllowedSchools(auth, config);
+    }
+
     return res.json({
       user: {
         id: user.id,
         email: user.email,
         emailVerified: user.emailVerified
-      }
+      },
+      schools: accessibleSchools.map((school) => ({
+        id: school.id,
+        slug: school.slug,
+        name: school.name
+      }))
     });
   } catch (error) {
     console.error("Auth me error", error);
@@ -652,21 +677,73 @@ app.get("/api/public/landing/:school/:program", async (req, res) => {
   }
 });
 
-app.get("/api/admin/:school/metrics", async (req, res) => {
+app.get("/api/public/school/:schoolId/landing/:programSlug", async (req, res) => {
   try {
-    const schoolSlug = req.params.school;
-    const auth = res.locals.auth as AuthContext | null;
-    const school = await getSchoolBySlug(schoolSlug);
-
+    const schoolId = req.params.schoolId;
+    const programSlug = req.params.programSlug;
+    const school = await getSchoolById(schoolId);
     if (!school) {
       return res.status(404).json({ error: "School not found" });
     }
 
     const config = await getConfigForClient(school.client_id);
-    const authCheck = requireAdminScope(auth, config, { id: school.id });
-    if (!authCheck.ok) {
-      return res.status(authCheck.status).json({ error: authCheck.error });
+    const schoolConfig = config.schools.find((s) => s.id === schoolId);
+    if (!schoolConfig) {
+      return res.status(404).json({ error: "School not found" });
     }
+
+    const program = config.programs.find(
+      (p) => p.schoolId === schoolId && p.slug === programSlug
+    );
+    if (!program) {
+      return res.status(404).json({ error: "Program not found" });
+    }
+
+    const campuses = config.campuses.filter((item) => item.schoolId === schoolId);
+    const programs = config.programs.filter((item) => item.schoolId === schoolId);
+
+    return res.json({
+      landing: {
+        school: schoolConfig,
+        program,
+        campuses,
+        programs
+      },
+      campuses,
+      programs
+    });
+  } catch (error) {
+    console.error("Public landing error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/admin/schools", attachAuthContext, requireClientAccess, async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    if (!auth || !auth.user.clientId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const config = await getConfigForClient(auth.user.clientId);
+    const accessibleSchools = getAllowedSchools(auth, config);
+
+    return res.json({
+      schools: accessibleSchools.map((school) => ({
+        id: school.id,
+        slug: school.slug,
+        name: school.name
+      }))
+    });
+  } catch (error) {
+    console.error("Admin schools list error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/admin/schools/:schoolId/metrics", requireSchoolAccess, async (req, res) => {
+  try {
+    const school = res.locals.school;
 
     const now = new Date();
     const fromParam = req.query.from ? new Date(String(req.query.from)) : null;
@@ -772,21 +849,9 @@ app.get("/api/admin/:school/metrics", async (req, res) => {
   }
 });
 
-app.get("/api/admin/:school/submissions", async (req, res) => {
+app.get("/api/admin/schools/:schoolId/submissions", requireSchoolAccess, async (req, res) => {
   try {
-    const schoolSlug = req.params.school;
-    const auth = res.locals.auth as AuthContext | null;
-    const school = await getSchoolBySlug(schoolSlug);
-
-    if (!school) {
-      return res.status(404).json({ error: "School not found" });
-    }
-
-    const config = await getConfigForClient(school.client_id);
-    const authCheck = requireAdminScope(auth, config, { id: school.id });
-    if (!authCheck.ok) {
-      return res.status(authCheck.status).json({ error: authCheck.error });
-    }
+    const school = res.locals.school;
 
     const limit = Math.min(Number(req.query.limit) || 25, 200);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
@@ -850,21 +915,9 @@ app.get("/api/admin/:school/submissions", async (req, res) => {
   }
 });
 
-app.get("/api/admin/:school/submissions/export", async (req, res) => {
+app.get("/api/admin/schools/:schoolId/submissions/export", requireSchoolAccess, async (req, res) => {
   try {
-    const schoolSlug = req.params.school;
-    const auth = res.locals.auth as AuthContext | null;
-    const school = await getSchoolBySlug(schoolSlug);
-
-    if (!school) {
-      return res.status(404).json({ error: "School not found" });
-    }
-
-    const config = await getConfigForClient(school.client_id);
-    const authCheck = requireAdminScope(auth, config, { id: school.id });
-    if (!authCheck.ok) {
-      return res.status(authCheck.status).json({ error: authCheck.error });
-    }
+    const school = res.locals.school;
 
     const limit = Math.min(Number(req.query.limit) || 1000, 5000);
     const offset = Math.max(Number(req.query.offset) || 0, 0);
@@ -1001,15 +1054,10 @@ app.get("/api/admin/:school/submissions/export", async (req, res) => {
   }
 });
 
-app.get("/api/admin/:school/users", async (req, res) => {
+app.get("/api/admin/schools/:schoolId/users", requireSchoolAccess, async (req, res) => {
   try {
-    const schoolSlug = req.params.school;
+    const school = res.locals.school;
     const auth = res.locals.auth as AuthContext | null;
-    const school = await getSchoolBySlug(schoolSlug);
-
-    if (!school) {
-      return res.status(404).json({ error: "School not found" });
-    }
 
     const authCheck = requireClientAdmin(auth, school.client_id);
     if (!authCheck.ok) {
@@ -1059,15 +1107,10 @@ app.get("/api/admin/:school/users", async (req, res) => {
   }
 });
 
-app.post("/api/admin/:school/users", async (req, res) => {
+app.post("/api/admin/schools/:schoolId/users", requireSchoolAccess, async (req, res) => {
   try {
-    const schoolSlug = req.params.school;
+    const school = res.locals.school;
     const auth = res.locals.auth as AuthContext | null;
-    const school = await getSchoolBySlug(schoolSlug);
-
-    if (!school) {
-      return res.status(404).json({ error: "School not found" });
-    }
 
     const authCheck = requireClientAdmin(auth, school.client_id);
     if (!authCheck.ok) {
@@ -1193,20 +1236,9 @@ app.post("/api/admin/drafts", async (req, res) => {
   }
 });
 
-app.get("/api/admin/:school/config", async (req, res) => {
+app.get("/api/admin/schools/:schoolId/config", requireSchoolAccess, async (req, res) => {
   try {
-    const schoolSlug = req.params.school;
-    const auth = res.locals.auth as AuthContext | null;
-    const school = await getSchoolBySlug(schoolSlug);
-    if (!school) {
-      return res.status(404).json({ error: "School not found" });
-    }
-
-    const config = await getConfigForClient(school.client_id);
-    const authCheck = requireAdminScope(auth, config, { id: school.id });
-    if (!authCheck.ok) {
-      return res.status(authCheck.status).json({ error: authCheck.error });
-    }
+    const school = res.locals.school;
 
     const schoolConfig = await configStore.getSchoolConfig(school.client_id, school.id);
     return res.json({ config: schoolConfig });
@@ -1216,23 +1248,16 @@ app.get("/api/admin/:school/config", async (req, res) => {
   }
 });
 
-app.get("/api/admin/:school/schools", async (req, res) => {
+app.get("/api/admin/schools/:schoolId/schools", requireSchoolAccess, async (req, res) => {
   try {
-    const schoolSlug = req.params.school;
+    const school = res.locals.school;
     const auth = res.locals.auth as AuthContext | null;
-    const school = await getSchoolBySlug(schoolSlug);
-    if (!school) {
-      return res.status(404).json({ error: "School not found" });
-    }
 
     const config = await getConfigForClient(school.client_id);
-    const authCheck = requireAdminScope(auth, config, { id: school.id });
-    if (!authCheck.ok) {
-      return res.status(authCheck.status).json({ error: authCheck.error });
-    }
+    const accessibleSchools = getAllowedSchools(auth!, config);
 
     return res.json({
-      schools: config.schools.map((item) => ({
+      schools: accessibleSchools.map((item) => ({
         id: item.id,
         slug: item.slug,
         name: item.name
@@ -1244,24 +1269,14 @@ app.get("/api/admin/:school/schools", async (req, res) => {
   }
 });
 
-app.post("/api/admin/:school/config", async (req, res) => {
+app.post("/api/admin/schools/:schoolId/config", requireSchoolAccess, async (req, res) => {
   try {
-    const schoolSlug = req.params.school;
+    const school = res.locals.school;
     const auth = res.locals.auth as AuthContext | null;
-    const school = await getSchoolBySlug(schoolSlug);
-    if (!school) {
-      return res.status(404).json({ error: "School not found" });
-    }
 
     const parseResult = AdminDraftSchema.safeParse(req.body);
     if (!parseResult.success) {
       return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
-    }
-
-    const config = await getConfigForClient(school.client_id);
-    const authCheck = requireAdminScope(auth, config, { id: school.id });
-    if (!authCheck.ok) {
-      return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
     const { programId, landingCopy, action } = parseResult.data;
@@ -1281,24 +1296,14 @@ app.post("/api/admin/:school/config", async (req, res) => {
   }
 });
 
-app.post("/api/admin/:school/config/rollback", async (req, res) => {
+app.post("/api/admin/schools/:schoolId/config/rollback", requireSchoolAccess, async (req, res) => {
   try {
-    const schoolSlug = req.params.school;
+    const school = res.locals.school;
     const auth = res.locals.auth as AuthContext | null;
-    const school = await getSchoolBySlug(schoolSlug);
-    if (!school) {
-      return res.status(404).json({ error: "School not found" });
-    }
 
     const parseResult = AdminConfigRollbackSchema.safeParse(req.body);
     if (!parseResult.success) {
       return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
-    }
-
-    const config = await getConfigForClient(school.client_id);
-    const authCheck = requireAdminScope(auth, config, { id: school.id });
-    if (!authCheck.ok) {
-      return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
     const versionResult = await pool.query(
@@ -1323,21 +1328,9 @@ app.post("/api/admin/:school/config/rollback", async (req, res) => {
   }
 });
 
-app.get("/api/admin/:school/audit", async (req, res) => {
+app.get("/api/admin/schools/:schoolId/audit", requireSchoolAccess, async (req, res) => {
   try {
-    const schoolSlug = req.params.school;
-    const auth = res.locals.auth as AuthContext | null;
-    const school = await getSchoolBySlug(schoolSlug);
-
-    if (!school) {
-      return res.status(404).json({ error: "School not found" });
-    }
-
-    const config = await getConfigForClient(school.client_id);
-    const authCheck = requireAdminScope(auth, config, { id: school.id });
-    if (!authCheck.ok) {
-      return res.status(authCheck.status).json({ error: authCheck.error });
-    }
+    const school = res.locals.school;
 
     const limit = Math.min(Number(req.query.limit) || 100, 500);
     const result = await pool.query(
@@ -1365,16 +1358,11 @@ app.get("/api/admin/:school/audit", async (req, res) => {
   }
 });
 
-app.patch("/api/admin/:school/users/:userId", async (req, res) => {
+app.patch("/api/admin/schools/:schoolId/users/:userId", requireSchoolAccess, async (req, res) => {
   try {
-    const schoolSlug = req.params.school;
+    const school = res.locals.school;
     const userId = req.params.userId;
     const auth = res.locals.auth as AuthContext | null;
-    const school = await getSchoolBySlug(schoolSlug);
-
-    if (!school) {
-      return res.status(404).json({ error: "School not found" });
-    }
 
     const authCheck = requireClientAdmin(auth, school.client_id);
     if (!authCheck.ok) {
