@@ -333,11 +333,114 @@ const server = http.createServer(async (_req, res) => {
     return;
   }
 
-  if (_req.url === "/worker/metrics") {
+  if (_req.url?.startsWith("/worker/metrics")) {
+    const url = new URL(_req.url, `http://${_req.headers.host || "localhost"}`);
     try {
       const counts = await deliveryQueue.getJobCounts("waiting", "active", "failed", "delayed", "completed");
+      const clientId = url.searchParams.get("clientId");
+      const schoolId = url.searchParams.get("schoolId");
+      const windowHours = Math.min(Math.max(Number(url.searchParams.get("windowHours") || 24), 1), 720);
+      const since = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+
+      let tenantStats = null as null | Record<string, unknown>;
+      let tenantQueue = null as null | Record<string, unknown>;
+
+      if (clientId) {
+        if (schoolId) {
+          const attemptResult = await pool.query(
+            `
+              SELECT
+                COUNT(*) AS total_attempts,
+                SUM(CASE WHEN da.status = 'delivered' THEN 1 ELSE 0 END) AS delivered_attempts,
+                SUM(CASE WHEN da.status = 'failed' THEN 1 ELSE 0 END) AS failed_attempts
+              FROM delivery_attempts da
+              JOIN submissions s ON s.id = da.submission_id
+              WHERE da.client_id = $1 AND s.school_id = $2 AND da.created_at >= $3
+            `,
+            [clientId, schoolId, since]
+          );
+
+          const submissionResult = await pool.query(
+            `
+              SELECT status, COUNT(*) AS count
+              FROM submissions
+              WHERE client_id = $1 AND school_id = $2 AND created_at >= $3
+              GROUP BY status
+            `,
+            [clientId, schoolId, since]
+          );
+
+          tenantStats = {
+            clientId,
+            schoolId,
+            windowHours,
+            attempts: {
+              total: Number(attemptResult.rows[0]?.total_attempts || 0),
+              delivered: Number(attemptResult.rows[0]?.delivered_attempts || 0),
+              failed: Number(attemptResult.rows[0]?.failed_attempts || 0)
+            },
+            submissions: submissionResult.rows.reduce<Record<string, number>>((acc, row) => {
+              acc[row.status] = Number(row.count || 0);
+              return acc;
+            }, {})
+          };
+        } else {
+          const attemptResult = await pool.query(
+            `
+              SELECT
+                COUNT(*) AS total_attempts,
+                SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) AS delivered_attempts,
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_attempts
+              FROM delivery_attempts
+              WHERE client_id = $1 AND created_at >= $2
+            `,
+            [clientId, since]
+          );
+
+          const submissionResult = await pool.query(
+            `
+              SELECT status, COUNT(*) AS count
+              FROM submissions
+              WHERE client_id = $1 AND created_at >= $2
+              GROUP BY status
+            `,
+            [clientId, since]
+          );
+
+          tenantStats = {
+            clientId,
+            windowHours,
+            attempts: {
+              total: Number(attemptResult.rows[0]?.total_attempts || 0),
+              delivered: Number(attemptResult.rows[0]?.delivered_attempts || 0),
+              failed: Number(attemptResult.rows[0]?.failed_attempts || 0)
+            },
+            submissions: submissionResult.rows.reduce<Record<string, number>>((acc, row) => {
+              acc[row.status] = Number(row.count || 0);
+              return acc;
+            }, {})
+          };
+        }
+
+        const limit = 1000;
+        const statuses = ["waiting", "active", "delayed", "failed"] as const;
+        const tenantCounts: Record<string, number> = {};
+        let partial = false;
+
+        for (const status of statuses) {
+          const jobs = await deliveryQueue.getJobs([status], 0, limit - 1);
+          const count = jobs.filter((job) => job.data?.clientId === clientId).length;
+          tenantCounts[status] = count;
+          if (jobs.length >= limit) {
+            partial = true;
+          }
+        }
+
+        tenantQueue = { ...tenantCounts, partial, limit };
+      }
+
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: "ok", queue: counts }));
+      res.end(JSON.stringify({ status: "ok", queue: counts, tenantQueue, tenantStats }));
       return;
     } catch (error) {
       res.writeHead(500, { "Content-Type": "application/json" });
