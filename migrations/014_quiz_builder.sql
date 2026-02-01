@@ -8,7 +8,7 @@ BEGIN;
 CREATE TABLE quiz_questions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-  school_id UUID REFERENCES schools(id) ON DELETE CASCADE,
+  school_id TEXT REFERENCES schools(id) ON DELETE CASCADE,
   question_text TEXT NOT NULL,
   question_type TEXT NOT NULL DEFAULT 'single_choice', -- 'single_choice', 'multiple_choice', 'text'
   help_text TEXT,
