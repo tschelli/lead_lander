@@ -1782,7 +1782,8 @@ app.post("/api/lead/start", async (req, res) => {
         {
           submissionId,
           stepIndex: 1,
-          clientId: entities.school.clientId
+          clientId: entities.school.clientId,
+          schoolId: payload.schoolId
         },
         {
           jobId: `create-${submissionId}`,
@@ -1826,7 +1827,7 @@ app.post("/api/lead/step", async (req, res) => {
             updated_at = $2,
             last_step_completed = GREATEST(COALESCE(last_step_completed, 0), $3)
         WHERE id = $4
-        RETURNING id, status, client_id
+        RETURNING id, status, client_id, school_id
       `,
       [payload.answers, now, payload.stepIndex, payload.submissionId]
     );
@@ -1836,8 +1837,12 @@ app.post("/api/lead/step", async (req, res) => {
     }
 
     const submissionClientId = updateResult.rows[0]?.client_id as string | undefined;
+    const submissionSchoolId = updateResult.rows[0]?.school_id as string | undefined;
     if (!submissionClientId) {
       return res.status(500).json({ error: "Missing client context" });
+    }
+    if (!submissionSchoolId) {
+      return res.status(500).json({ error: "Missing school context" });
     }
 
     await pool.query(
@@ -1851,7 +1856,8 @@ app.post("/api/lead/step", async (req, res) => {
       {
         submissionId: payload.submissionId,
         stepIndex: payload.stepIndex,
-        clientId: submissionClientId
+        clientId: submissionClientId,
+        schoolId: submissionSchoolId
       },
       {
         jobId: `update-${payload.submissionId}-${payload.stepIndex}`,
@@ -1973,7 +1979,8 @@ app.post("/api/submit", async (req, res) => {
         {
           submissionId,
           stepIndex: 1,
-          clientId: entities.school.clientId
+          clientId: entities.school.clientId,
+          schoolId: payload.schoolId
         },
         {
           jobId: `create-${submissionId}`,

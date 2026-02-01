@@ -35,6 +35,13 @@ type SubmissionRow = {
   created_from_step: number | null;
 };
 
+type DeliveryJobData = {
+  submissionId: string;
+  clientId: string;
+  schoolId: string;
+  stepIndex?: number;
+};
+
 function truncate(value: string | undefined, max = 5000) {
   if (!value) return value;
   return value.length > max ? value.slice(0, max) : value;
@@ -86,6 +93,7 @@ const worker = new Worker(
   async (job) => {
     const submissionId = job.data.submissionId as string;
     const clientId = job.data.clientId as string;
+    const schoolId = job.data.schoolId as string;
     const jobType = job.name;
     const action = jobType === "create_lead" ? "create" : "update";
     const stepIndex = jobType === "create_lead"
@@ -96,6 +104,10 @@ const worker = new Worker(
 
     if (jobType !== "create_lead" && jobType !== "update_lead") {
       throw new Error(`Unsupported job type: ${jobType}`);
+    }
+
+    if (!submissionId || !clientId || !schoolId) {
+      throw new Error("Missing job payload context");
     }
 
     const attemptNumber = job.attemptsMade + 1;
@@ -111,6 +123,13 @@ const worker = new Worker(
     }
 
     const submission = submissionResult.rows[0];
+    if (submission.school_id !== schoolId) {
+      await logAudit(clientId, submissionId, "job_payload_mismatch", {
+        expectedSchoolId: submission.school_id,
+        jobSchoolId: schoolId
+      });
+      throw new Error("Job school_id mismatch");
+    }
 
     const dedupeResult = await pool.query(
       `
