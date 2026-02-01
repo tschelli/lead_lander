@@ -1,4 +1,5 @@
 import { FormEngine } from "../../../components/FormEngine";
+import type { QuestionOverride } from "@lead_lander/config-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ type LandingResponse = {
       body: string;
       ctaText: string;
     };
-    questionOverrides?: Record<string, unknown>;
+    questionOverrides?: QuestionOverride[];
   };
   campuses?: { id: string; name: string; schoolId: string }[];
   programs?: { id: string; name: string; schoolId: string }[];
