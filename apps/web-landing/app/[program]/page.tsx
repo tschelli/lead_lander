@@ -1,4 +1,8 @@
 import { FormEngine } from "../../components/FormEngine";
+import { HighlightsSection } from "../../components/HighlightsSection";
+import { StatsSection } from "../../components/StatsSection";
+import { TestimonialsSection } from "../../components/TestimonialsSection";
+import { FAQSection } from "../../components/FAQSection";
 import type { Config } from "@lead_lander/config-schema";
 import { SCHOOL_ID, API_BASE_URL } from "../../lib/schoolContext";
 
@@ -28,6 +32,17 @@ type LandingResponse = {
       id: string;
       name: string;
       availableCampuses?: string[];
+      templateType?: "minimal" | "full";
+      heroImage?: string;
+      highlights?: Array<{ icon?: string; text: string }>;
+      testimonials?: Array<{ quote: string; author: string; role?: string; photo?: string }>;
+      faqs?: Array<{ question: string; answer: string }>;
+      stats?: {
+        placementRate?: string;
+        avgSalary?: string;
+        duration?: string;
+        graduationRate?: string;
+      };
     };
     landingCopy: {
       headline: string;
@@ -113,6 +128,9 @@ export default async function LandingPage({
     .filter((item) => item.schoolId === school.id)
     .map((item) => ({ label: item.name, value: item.id }));
 
+  const templateType = program.templateType || "full";
+  const showFullContent = templateType === "full";
+
   const style = {
     "--color-primary": school.branding.colors.primary,
     "--color-secondary": school.branding.colors.secondary,
@@ -120,6 +138,15 @@ export default async function LandingPage({
     "--color-bg": school.branding.colors.background || "#f7f4ef",
     "--color-text": school.branding.colors.text || "#1b1b1b"
   } as React.CSSProperties;
+
+  const heroStyle = program.heroImage
+    ? {
+        ...style,
+        backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), url(${program.heroImage})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center"
+      }
+    : style;
 
   const campusOptionsWithFallback = campusOptions.concat({
     label: "Not sure yet",
@@ -129,7 +156,8 @@ export default async function LandingPage({
   return (
     <main style={style}>
       <div className="container">
-        <section className="brand-card">
+        {/* Hero Section */}
+        <section className="brand-card" style={heroStyle}>
           <span className="badge school-badge">{school.name}</span>
           {school.branding.logoUrl && (
             // eslint-disable-next-line @next/next/no-img-element
@@ -147,6 +175,8 @@ export default async function LandingPage({
             </p>
           )}
         </section>
+
+        {/* Contact Form - FIRST per user requirement */}
         <FormEngine
           schoolId={school.id}
           programId={program.id}
@@ -158,6 +188,27 @@ export default async function LandingPage({
           initialAnswers={{ program_interest: program.id }}
           ctaText={landingCopy.ctaText}
         />
+
+        {/* Additional Content Sections - Only shown for "full" template */}
+        {showFullContent && (
+          <>
+            {program.highlights && program.highlights.length > 0 && (
+              <HighlightsSection highlights={program.highlights} />
+            )}
+
+            {program.stats && (
+              <StatsSection stats={program.stats} />
+            )}
+
+            {program.testimonials && program.testimonials.length > 0 && (
+              <TestimonialsSection testimonials={program.testimonials} />
+            )}
+
+            {program.faqs && program.faqs.length > 0 && (
+              <FAQSection faqs={program.faqs} />
+            )}
+          </>
+        )}
       </div>
     </main>
   );

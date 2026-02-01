@@ -73,7 +73,31 @@ export function createConfigStore(pool: Pool): ConfigStore {
           slug: row.slug,
           name: row.name,
           landingCopy: row.landing_copy,
-          questionOverrides: row.question_overrides || undefined
+          questionOverrides: row.question_overrides || undefined,
+          availableCampuses: row.available_campuses || undefined,
+          templateType: row.template_type || "full",
+          heroImage: row.hero_image || undefined,
+          heroBackgroundColor: row.hero_background_color || undefined,
+          heroBackgroundImage: row.hero_background_image || undefined,
+          duration: row.duration || undefined,
+          salaryRange: row.salary_range || undefined,
+          placementRate: row.placement_rate || undefined,
+          graduationRate: row.graduation_rate || undefined,
+          highlights: row.highlights || [],
+          testimonials: row.testimonials || [],
+          faqs: row.faqs || [],
+          stats: row.stats || {},
+          sectionsConfig: row.sections_config || {
+            order: ["hero", "highlights", "stats", "testimonials", "form", "faqs"],
+            visible: {
+              hero: true,
+              highlights: true,
+              stats: true,
+              testimonials: true,
+              form: true,
+              faqs: true
+            }
+          }
         })),
         landingPages: landingPages.rows.map((row) => ({
           id: row.id,
@@ -161,8 +185,8 @@ export function createConfigStore(pool: Pool): ConfigStore {
 
         for (const program of programs) {
           await client.query(
-            `INSERT INTO programs (id, client_id, school_id, slug, name, landing_copy, question_overrides, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+            `INSERT INTO programs (id, client_id, school_id, slug, name, landing_copy, question_overrides, available_campuses, template_type, hero_image, hero_background_color, hero_background_image, duration, salary_range, placement_rate, graduation_rate, highlights, testimonials, faqs, stats, sections_config, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $22)
              ON CONFLICT (id) DO UPDATE SET
                client_id = EXCLUDED.client_id,
                school_id = EXCLUDED.school_id,
@@ -170,6 +194,20 @@ export function createConfigStore(pool: Pool): ConfigStore {
                name = EXCLUDED.name,
                landing_copy = EXCLUDED.landing_copy,
                question_overrides = EXCLUDED.question_overrides,
+               available_campuses = EXCLUDED.available_campuses,
+               template_type = EXCLUDED.template_type,
+               hero_image = EXCLUDED.hero_image,
+               hero_background_color = EXCLUDED.hero_background_color,
+               hero_background_image = EXCLUDED.hero_background_image,
+               duration = EXCLUDED.duration,
+               salary_range = EXCLUDED.salary_range,
+               placement_rate = EXCLUDED.placement_rate,
+               graduation_rate = EXCLUDED.graduation_rate,
+               highlights = EXCLUDED.highlights,
+               testimonials = EXCLUDED.testimonials,
+               faqs = EXCLUDED.faqs,
+               stats = EXCLUDED.stats,
+               sections_config = EXCLUDED.sections_config,
                updated_at = EXCLUDED.updated_at`,
             [
               program.id,
@@ -179,6 +217,30 @@ export function createConfigStore(pool: Pool): ConfigStore {
               program.name,
               program.landingCopy,
               program.questionOverrides || null,
+              program.availableCampuses || null,
+              program.templateType || "full",
+              program.heroImage || null,
+              program.heroBackgroundColor || null,
+              program.heroBackgroundImage || null,
+              program.duration || null,
+              program.salaryRange || null,
+              program.placementRate || null,
+              program.graduationRate || null,
+              program.highlights || [],
+              program.testimonials || [],
+              program.faqs || [],
+              program.stats || {},
+              program.sectionsConfig || {
+                order: ["hero", "highlights", "stats", "testimonials", "form", "faqs"],
+                visible: {
+                  hero: true,
+                  highlights: true,
+                  stats: true,
+                  testimonials: true,
+                  form: true,
+                  faqs: true
+                }
+              },
               new Date()
             ]
           );

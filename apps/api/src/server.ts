@@ -24,6 +24,7 @@ import { type AuthContext, type UserRole } from "./authz";
 import { getAllowedSchools } from "./tenantScope";
 import { resolveEntitiesByIds, resolveLandingPageBySlugs, type Config } from "@lead_lander/config-schema";
 import { requireSchoolAccess, requireClientAccess } from "./middleware/clientScope";
+import { requireConfigAccess } from "./middleware/configAccess";
 
 const app = express();
 
@@ -1436,6 +1437,393 @@ app.patch("/api/admin/schools/:schoolId/users/:userId", requireSchoolAccess, asy
     return res.status(500).json({ error: "Internal server error" });
   }
 });
+
+// ============================================================================
+// Config Builder API Endpoints
+// ============================================================================
+
+// Get landing page config for a specific program
+app.get(
+  "/api/admin/schools/:schoolId/config/landing/:programId",
+  requireSchoolAccess,
+  requireConfigAccess,
+  async (req, res) => {
+    try {
+      const { programId } = req.params;
+      const school = res.locals.school;
+
+      const result = await pool.query(
+        `
+        SELECT id, name, slug, landing_copy,
+               template_type, hero_image, hero_background_color, hero_background_image,
+               duration, salary_range, placement_rate, graduation_rate,
+               highlights, testimonials, faqs, stats, sections_config
+        FROM programs
+        WHERE id = $1 AND client_id = $2 AND school_id = $3
+      `,
+        [programId, school.client_id, school.id]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: "Program not found" });
+      }
+
+      return res.json({ program: result.rows[0] });
+    } catch (error) {
+      console.error("Config landing fetch error", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Create/update landing page config (creates draft)
+app.put(
+  "/api/admin/schools/:schoolId/config/landing/:programId",
+  requireSchoolAccess,
+  requireConfigAccess,
+  async (req, res) => {
+    try {
+      const { programId } = req.params;
+      const school = res.locals.school;
+      const auth = res.locals.auth as AuthContext;
+
+      const {
+        landingCopy,
+        templateType,
+        heroImage,
+        heroBackgroundColor,
+        heroBackgroundImage,
+        duration,
+        salaryRange,
+        placementRate,
+        graduationRate,
+        highlights,
+        testimonials,
+        faqs,
+        stats,
+        sectionsConfig
+      } = req.body;
+
+      // Verify program exists and belongs to this school
+      const programCheck = await pool.query(
+        "SELECT id FROM programs WHERE id = $1 AND client_id = $2 AND school_id = $3",
+        [programId, school.client_id, school.id]
+      );
+
+      if (programCheck.rows.length === 0) {
+        return res.status(404).json({ error: "Program not found" });
+      }
+
+      // Create draft in config_versions
+      const draftId = uuidv4();
+      const now = new Date();
+
+      await pool.query(
+        `
+        INSERT INTO config_versions
+          (id, client_id, school_id, entity_type, entity_id, payload, created_by, status, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+      `,
+        [
+          draftId,
+          school.client_id,
+          school.id,
+          "program_landing",
+          programId,
+          {
+            landingCopy,
+            templateType,
+            heroImage,
+            heroBackgroundColor,
+            heroBackgroundImage,
+            duration,
+            salaryRange,
+            placementRate,
+            graduationRate,
+            highlights,
+            testimonials,
+            faqs,
+            stats,
+            sectionsConfig
+          },
+          auth.user.id,
+          "draft",
+          now
+        ]
+      );
+
+      await logAdminAudit(school.client_id, school.id, "config_draft_created", {
+        draftId,
+        programId,
+        entityType: "program_landing"
+      });
+
+      return res.json({ draftId, status: "draft" });
+    } catch (error) {
+      console.error("Config landing update error", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Submit draft for approval
+app.post(
+  "/api/admin/schools/:schoolId/config/drafts/:draftId/submit",
+  requireSchoolAccess,
+  requireConfigAccess,
+  async (req, res) => {
+    try {
+      const { draftId } = req.params;
+      const school = res.locals.school;
+
+      const result = await pool.query(
+        `
+        UPDATE config_versions
+        SET status = 'pending_approval', updated_at = NOW()
+        WHERE id = $1 AND client_id = $2 AND school_id = $3 AND status = 'draft'
+        RETURNING id
+      `,
+        [draftId, school.client_id, school.id]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: "Draft not found or already submitted" });
+      }
+
+      await logAdminAudit(school.client_id, school.id, "config_draft_submitted", {
+        draftId
+      });
+
+      return res.json({ status: "pending_approval" });
+    } catch (error) {
+      console.error("Config draft submit error", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Approve draft (applies changes)
+app.post(
+  "/api/admin/schools/:schoolId/config/drafts/:draftId/approve",
+  requireSchoolAccess,
+  requireConfigAccess,
+  async (req, res) => {
+    try {
+      const { draftId } = req.params;
+      const school = res.locals.school;
+      const auth = res.locals.auth as AuthContext;
+
+      // Check if user can approve (must be client_admin or super_admin)
+      const canApprove = auth.roles.some(
+        (r) => r.role === "super_admin" || r.role === "client_admin"
+      );
+
+      if (!canApprove) {
+        return res.status(403).json({ error: "Insufficient permissions to approve drafts" });
+      }
+
+      // Get draft
+      const draftResult = await pool.query(
+        `
+        SELECT entity_type, entity_id, payload
+        FROM config_versions
+        WHERE id = $1 AND client_id = $2 AND school_id = $3 AND status = 'pending_approval'
+      `,
+        [draftId, school.client_id, school.id]
+      );
+
+      if (draftResult.rows.length === 0) {
+        return res.status(404).json({ error: "Draft not found or not pending approval" });
+      }
+
+      const draft = draftResult.rows[0];
+      const payload = draft.payload;
+
+      // Apply changes based on entity type
+      if (draft.entity_type === "program_landing") {
+        await pool.query(
+          `
+          UPDATE programs
+          SET landing_copy = $1,
+              template_type = $2,
+              hero_image = $3,
+              hero_background_color = $4,
+              hero_background_image = $5,
+              duration = $6,
+              salary_range = $7,
+              placement_rate = $8,
+              graduation_rate = $9,
+              highlights = $10,
+              testimonials = $11,
+              faqs = $12,
+              stats = $13,
+              sections_config = $14,
+              updated_at = NOW()
+          WHERE id = $15 AND client_id = $16 AND school_id = $17
+        `,
+          [
+            payload.landingCopy,
+            payload.templateType || "full",
+            payload.heroImage,
+            payload.heroBackgroundColor,
+            payload.heroBackgroundImage,
+            payload.duration,
+            payload.salaryRange,
+            payload.placementRate,
+            payload.graduationRate,
+            payload.highlights || [],
+            payload.testimonials || [],
+            payload.faqs || [],
+            payload.stats || {},
+            payload.sectionsConfig || {
+              order: ["hero", "highlights", "stats", "testimonials", "form", "faqs"],
+              visible: {
+                hero: true,
+                highlights: true,
+                stats: true,
+                testimonials: true,
+                form: true,
+                faqs: true
+              }
+            },
+            draft.entity_id,
+            school.client_id,
+            school.id
+          ]
+        );
+      }
+
+      // Mark draft as approved
+      await pool.query(
+        `
+        UPDATE config_versions
+        SET status = 'approved', approved_by = $1, approved_at = NOW(), updated_at = NOW()
+        WHERE id = $2
+      `,
+        [auth.user.id, draftId]
+      );
+
+      await logAdminAudit(school.client_id, school.id, "config_draft_approved", {
+        draftId,
+        entityType: draft.entity_type,
+        entityId: draft.entity_id
+      });
+
+      // TODO: Trigger school redeployment here
+      // await triggerSchoolRedeployment(school.id);
+
+      return res.json({ status: "approved" });
+    } catch (error) {
+      console.error("Config draft approve error", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// Reject draft
+app.post(
+  "/api/admin/schools/:schoolId/config/drafts/:draftId/reject",
+  requireSchoolAccess,
+  requireConfigAccess,
+  async (req, res) => {
+    try {
+      const { draftId } = req.params;
+      const school = res.locals.school;
+      const auth = res.locals.auth as AuthContext;
+      const { reason } = req.body;
+
+      // Check if user can reject (must be client_admin or super_admin)
+      const canReject = auth.roles.some(
+        (r) => r.role === "super_admin" || r.role === "client_admin"
+      );
+
+      if (!canReject) {
+        return res.status(403).json({ error: "Insufficient permissions to reject drafts" });
+      }
+
+      const result = await pool.query(
+        `
+        UPDATE config_versions
+        SET status = 'rejected',
+            rejected_by = $1,
+            rejected_at = NOW(),
+            rejection_reason = $2,
+            updated_at = NOW()
+        WHERE id = $3 AND client_id = $4 AND school_id = $5 AND status = 'pending_approval'
+        RETURNING id
+      `,
+        [auth.user.id, reason || null, draftId, school.client_id, school.id]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: "Draft not found or not pending approval" });
+      }
+
+      await logAdminAudit(school.client_id, school.id, "config_draft_rejected", {
+        draftId,
+        reason
+      });
+
+      return res.json({ status: "rejected" });
+    } catch (error) {
+      console.error("Config draft reject error", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+// List drafts for school
+app.get(
+  "/api/admin/schools/:schoolId/config/drafts",
+  requireSchoolAccess,
+  requireConfigAccess,
+  async (req, res) => {
+    try {
+      const school = res.locals.school;
+      const limit = Math.min(Number(req.query.limit) || 50, 100);
+
+      const result = await pool.query(
+        `
+        SELECT cv.id, cv.entity_type, cv.entity_id, cv.status,
+               cv.created_by, cv.created_at, cv.updated_at,
+               cv.approved_by, cv.approved_at,
+               cv.rejected_by, cv.rejected_at, cv.rejection_reason,
+               u.email as creator_email,
+               p.name as program_name
+        FROM config_versions cv
+        LEFT JOIN users u ON u.id = cv.created_by
+        LEFT JOIN programs p ON p.id = cv.entity_id AND cv.entity_type = 'program_landing'
+        WHERE cv.client_id = $1 AND cv.school_id = $2
+        ORDER BY cv.created_at DESC
+        LIMIT $3
+      `,
+        [school.client_id, school.id, limit]
+      );
+
+      return res.json({
+        drafts: result.rows.map((row) => ({
+          id: row.id,
+          entityType: row.entity_type,
+          entityId: row.entity_id,
+          entityName: row.program_name,
+          status: row.status,
+          createdBy: row.created_by,
+          creatorEmail: row.creator_email,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          approvedBy: row.approved_by,
+          approvedAt: row.approved_at,
+          rejectedBy: row.rejected_by,
+          rejectedAt: row.rejected_at,
+          rejectionReason: row.rejection_reason
+        }))
+      });
+    } catch (error) {
+      console.error("Config drafts list error", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
 
 app.get("/api/super/clients", async (req, res) => {
   try {
