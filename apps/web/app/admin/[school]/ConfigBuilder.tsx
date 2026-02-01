@@ -15,6 +15,7 @@ type Program = {
 
 type ConfigBuilderProps = {
   programs: Program[];
+  schoolSlug: string;
 };
 
 function toYaml(lines: Record<string, string>) {
@@ -27,7 +28,7 @@ function toYaml(lines: Record<string, string>) {
   ].join("\n");
 }
 
-export function ConfigBuilder({ programs }: ConfigBuilderProps) {
+export function ConfigBuilder({ programs, schoolSlug }: ConfigBuilderProps) {
   const [selectedId, setSelectedId] = useState(programs[0]?.id || "");
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -72,7 +73,7 @@ export function ConfigBuilder({ programs }: ConfigBuilderProps) {
     setSaving(true);
     setStatus(null);
     try {
-      const response = await fetch("/api/admin/drafts", {
+      const response = await fetch(`/api/admin/${schoolSlug}/config`, {
         method: "POST",
         credentials: "include",
         headers: {

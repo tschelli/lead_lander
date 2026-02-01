@@ -1,16 +1,46 @@
-import { loadConfig } from "@lead_lander/config-schema";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { ConfigBuilder } from "../ConfigBuilder";
 import "../styles.css";
-import { resolveConfigDir } from "../../../../lib/configDir";
 import { hasSessionCookie } from "../../../../lib/authCookies";
 
 export const dynamic = "force-dynamic";
 
-export default function AdminConfig({ params }: { params: { school: string } }) {
-  const config = loadConfig(resolveConfigDir());
-  const school = config.schools.find((item) => item.slug === params.school);
+type ConfigResponse = {
+  config: {
+    schools: { id: string; name: string; slug: string; branding: { logoUrl?: string } }[];
+    programs: { id: string; name: string; landingCopy: { headline: string; subheadline: string; body: string; ctaText: string } }[];
+  };
+};
+
+export default async function AdminConfig({ params }: { params: { school: string } }) {
+  const requestHeaders = headers();
+  const cookie = requestHeaders.get("cookie");
+  if (!hasSessionCookie(cookie)) {
+    redirect(`/admin/${params.school}/login`);
+  }
+
+  const apiBase =
+    process.env.ADMIN_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:4000";
+
+  const response = await fetch(`${apiBase}/api/admin/${params.school}/config`, {
+    credentials: "include",
+    headers: cookie ? { cookie } : {},
+    cache: "no-store"
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    redirect(`/admin/${params.school}/login`);
+  }
+
+  if (!response.ok) {
+    throw new Error("Failed to load config");
+  }
+
+  const data = (await response.json()) as ConfigResponse;
+  const school = data.config.schools.find((item) => item.slug === params.school);
 
   if (!school) {
     return (
@@ -21,13 +51,6 @@ export default function AdminConfig({ params }: { params: { school: string } }) 
         </div>
       </div>
     );
-  }
-
-  const programs = config.programs.filter((program) => program.schoolId === school.id);
-  const requestHeaders = headers();
-  const cookie = requestHeaders.get("cookie");
-  if (!hasSessionCookie(cookie)) {
-    redirect(`/admin/${school.slug}/login`);
   }
 
   return (
@@ -53,26 +76,13 @@ export default function AdminConfig({ params }: { params: { school: string } }) 
       <section className="admin-card">
         <h3>Program copy</h3>
         <ConfigBuilder
-          programs={programs.map((program) => ({
+          programs={data.config.programs.map((program) => ({
             id: program.id,
             name: program.name,
             landingCopy: program.landingCopy
           }))}
+          schoolSlug={school.slug}
         />
-      </section>
-
-      <section className="admin-card">
-        <h3>Drafts awaiting approval</h3>
-        <div className="admin-official__draft">
-          <p className="admin-muted">{school.name} · Medical Billing</p>
-          <p>CTA text updated to “Get Enrollment Details”.</p>
-          <button className="admin-official__ghost">Approve</button>
-        </div>
-        <div className="admin-official__draft">
-          <p className="admin-muted">{school.name} · Cybersecurity</p>
-          <p>Added new FAQ block. Waiting for owner review.</p>
-          <button className="admin-official__ghost">Review</button>
-        </div>
       </section>
     </div>
   );

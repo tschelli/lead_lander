@@ -20,6 +20,7 @@ export const env = {
   queueName: process.env.DELIVERY_QUEUE_NAME || "lead_delivery",
   deliveryMaxAttempts: Number(process.env.DELIVERY_MAX_ATTEMPTS || 5),
   deliveryBackoffMs: Number(process.env.DELIVERY_BACKOFF_MS || 10_000),
+  defaultClientId: process.env.DEFAULT_CLIENT_ID || "",
   authJwtSecret: process.env.AUTH_JWT_SECRET || "dev-insecure-change-me",
   authSessionTtlDays: Number(process.env.AUTH_SESSION_TTL_DAYS || 7),
   authResetTokenTtlMinutes: Number(process.env.AUTH_RESET_TTL_MINUTES || 60),
@@ -28,6 +29,7 @@ export const env = {
   authCookieSameSite: process.env.AUTH_COOKIE_SAMESITE || "lax",
   authCookieSecure: process.env.AUTH_COOKIE_SECURE === "true",
   trustProxy: process.env.TRUST_PROXY || "",
+  configCacheTtlSeconds: Number(process.env.CONFIG_CACHE_TTL_SECONDS || 60),
   corsOrigins: (process.env.CORS_ORIGINS || "")
     .split(",")
     .map((origin) => origin.trim())

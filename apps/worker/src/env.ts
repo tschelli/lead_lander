@@ -16,6 +16,7 @@ export const env = {
   queueName: process.env.DELIVERY_QUEUE_NAME || "lead_delivery",
   maxAttempts: Number(process.env.DELIVERY_MAX_ATTEMPTS || 5),
   workerPort: Number(process.env.WORKER_PORT || 5005),
+  configCacheTtlSeconds: Number(process.env.CONFIG_CACHE_TTL_SECONDS || 60),
   emailEnabled: process.env.EMAIL_ENABLED === "true",
   smtpHost: process.env.SMTP_HOST,
   smtpPort: process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 587,

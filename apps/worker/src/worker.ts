@@ -3,7 +3,7 @@ import { Worker } from "bullmq";
 import { v4 as uuidv4 } from "uuid";
 import { env } from "./env";
 import { pool } from "./db";
-import { getConfig } from "./config";
+import { getConfigForClient } from "./config";
 import { deliveryQueue } from "./queue";
 import { webhookAdapter } from "./adapters/webhookAdapter";
 import { genericAdapter } from "./adapters/genericAdapter";
@@ -144,7 +144,7 @@ const worker = new Worker(
       [attemptId, clientId, submissionId, attemptNumber, "started", jobType, stepIndex, createdAt]
     );
 
-    const config = getConfig();
+    const config = await getConfigForClient(clientId);
     const entities = resolveEntitiesByIds(
       config,
       submission.school_id,

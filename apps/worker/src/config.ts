@@ -1,12 +1,9 @@
-import path from "path";
-import { loadConfig, type Config } from "@lead_lander/config-schema";
-import { env } from "./env";
+import type { Config } from "@lead_lander/config-schema";
+import { pool } from "./db";
+import { createConfigStore } from "./configStore";
 
-let cachedConfig: Config | null = null;
+const store = createConfigStore(pool);
 
-export function getConfig(): Config {
-  if (cachedConfig) return cachedConfig;
-  const configDir = path.resolve(process.cwd(), env.configDir);
-  cachedConfig = loadConfig(configDir);
-  return cachedConfig;
+export async function getConfigForClient(clientId: string): Promise<Config> {
+  return store.getClientConfig(clientId);
 }

@@ -1,12 +1,21 @@
-import path from "path";
-import { loadConfig, type Config } from "@lead_lander/config-schema";
+import type { Config } from "@lead_lander/config-schema";
 import { env } from "./env";
+import { pool } from "./db";
+import { createConfigStore } from "./configStore";
 
-let cachedConfig: Config | null = null;
+const store = createConfigStore(pool);
 
-export function getConfig(): Config {
-  if (cachedConfig) return cachedConfig;
-  const configDir = path.resolve(process.cwd(), env.configDir);
-  cachedConfig = loadConfig(configDir);
-  return cachedConfig;
+export async function getConfigForClient(clientId: string): Promise<Config> {
+  return store.getClientConfig(clientId);
+}
+
+export async function getConfig(): Promise<Config> {
+  if (!env.defaultClientId) {
+    throw new Error("DEFAULT_CLIENT_ID is required for config loading");
+  }
+  return store.getClientConfig(env.defaultClientId);
+}
+
+export function invalidateConfigCache(clientId: string) {
+  store.invalidate(clientId);
 }
