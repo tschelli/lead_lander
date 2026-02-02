@@ -43,6 +43,21 @@ export function SuperAdminLayout({ initialClients, userEmail }: SuperAdminLayout
   const [activeTab, setActiveTab] = useState<"overview" | "create">("overview");
   const [detailTab, setDetailTab] = useState<"overview" | "config" | "quiz" | "audit">("overview");
   const mainRef = useRef<HTMLDivElement | null>(null);
+  const [treeLoading, setTreeLoading] = useState(false);
+
+  const refreshTree = async () => {
+    setTreeLoading(true);
+    try {
+      const res = await fetch("/api/super/tree", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to refresh tree");
+      const data = await res.json();
+      setClients(data.clients || []);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setTreeLoading(false);
+    }
+  };
 
   const toggleClient = (clientId: string) => {
     const newExpanded = new Set(expandedClients);
@@ -158,6 +173,7 @@ export function SuperAdminLayout({ initialClients, userEmail }: SuperAdminLayout
             <h3>All Clients</h3>
             <span className="super-admin__sidebar-count">{clients.length}</span>
           </div>
+          {treeLoading && <div className="admin-muted">Refreshing…</div>}
 
           <div className="super-admin__tree">
             {filteredClients.length === 0 && (
@@ -266,6 +282,7 @@ export function SuperAdminLayout({ initialClients, userEmail }: SuperAdminLayout
               clients={clients}
               detailTab={detailTab}
               setDetailTab={setDetailTab}
+              onRefreshTree={refreshTree}
             />
           )}
           {activeTab === "overview" && !selectedEntity && <WelcomePanel />}
@@ -310,12 +327,14 @@ function EntityDetailPanel({
   entity,
   clients,
   detailTab,
-  setDetailTab
+  setDetailTab,
+  onRefreshTree
 }: {
   entity: any;
   clients: Client[];
   detailTab: "overview" | "config" | "quiz" | "audit";
   setDetailTab: (value: "overview" | "config" | "quiz" | "audit") => void;
+  onRefreshTree: () => Promise<void>;
 }) {
   // Find the entity details
   let entityDetails: any = null;
@@ -325,7 +344,7 @@ function EntityDetailPanel({
     for (const client of clients) {
       const school = client.schools.find((s) => s.id === entity.id);
       if (school) {
-        entityDetails = { ...school, clientName: client.name };
+        entityDetails = { ...school, clientName: client.name, clientId: client.id };
         break;
       }
     }
@@ -334,12 +353,133 @@ function EntityDetailPanel({
       for (const school of client.schools) {
         const program = school.programs.find((p) => p.id === entity.id);
         if (program) {
-          entityDetails = { ...program, schoolName: school.name, clientName: client.name };
+          entityDetails = {
+            ...program,
+            schoolName: school.name,
+            clientName: client.name,
+            clientId: client.id,
+            schoolId: school.id
+          };
           break;
         }
       }
     }
   }
+
+  const [detail, setDetail] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const updateDetail = (updates: Record<string, any>) => {
+    setDetail((prev: any) => ({ ...(prev || {}), ...updates }));
+  };
+
+  const saveDetail = async () => {
+    if (!detail || !entityDetails) return;
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      let url = "";
+      let payload: Record<string, any> = {};
+      if (entity.type === "client") {
+        url = `/api/super/clients/${entityDetails.id}`;
+        payload = { name: detail.name };
+      } else if (entity.type === "school") {
+        url = `/api/super/clients/${entityDetails.clientId}/schools/${entityDetails.id}`;
+        payload = {
+          name: detail.name,
+          slug: detail.slug,
+          crmConnectionId: detail.crmConnectionId,
+          branding: detail.branding,
+          compliance: detail.compliance,
+          thankYou: detail.thankYou
+        };
+      } else if (entity.type === "program") {
+        url = `/api/super/clients/${entityDetails.clientId}/programs/${entityDetails.id}`;
+        payload = {
+          name: detail.name,
+          slug: detail.slug,
+          availableCampuses: detail.availableCampuses || [],
+          templateType: detail.templateType || "full",
+          useQuizRouting: Boolean(detail.useQuizRouting)
+        };
+      }
+
+      const res = await fetch(url, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error("Failed to save changes");
+      const data = await res.json();
+      setDetail((prev: any) => ({ ...(prev || {}), ...data }));
+      setMessage({ type: "success", text: "Changes saved." });
+      await onRefreshTree();
+    } catch (error) {
+      console.error(error);
+      setMessage({ type: "error", text: "Failed to save changes." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    const fetchDetail = async () => {
+      if (!entityDetails) return;
+      setLoading(true);
+      setMessage(null);
+      try {
+        let url = "";
+        if (entity.type === "client") {
+          url = `/api/super/clients/${entityDetails.id}`;
+        } else if (entity.type === "school") {
+          url = `/api/super/clients/${entityDetails.clientId}/schools/${entityDetails.id}`;
+        } else if (entity.type === "program") {
+          url = `/api/super/clients/${entityDetails.clientId}/programs/${entityDetails.id}`;
+        }
+
+        const res = await fetch(url, { credentials: "include" });
+        if (!res.ok) throw new Error("Failed to load details");
+        const data = await res.json();
+        let nextDetail =
+          entity.type === "client"
+            ? data.client
+            : entity.type === "school"
+              ? data.school
+              : data.program;
+
+        if (entity.type === "school" && nextDetail) {
+          nextDetail = {
+            ...nextDetail,
+            crmConnectionId: nextDetail.crm_connection_id,
+            thankYou: nextDetail.thank_you,
+            branding: nextDetail.branding || {},
+            compliance: nextDetail.compliance || {}
+          };
+        }
+        if (entity.type === "program" && nextDetail) {
+          nextDetail = {
+            ...nextDetail,
+            availableCampuses: nextDetail.available_campuses || [],
+            templateType: nextDetail.template_type,
+            useQuizRouting: nextDetail.use_quiz_routing
+          };
+        }
+
+        setDetail(nextDetail || null);
+      } catch (error) {
+        console.error(error);
+        setMessage({ type: "error", text: "Failed to load details" });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDetail();
+  }, [entityDetails?.id, entityDetails?.clientId, entityDetails?.schoolId, entity.type]);
 
   const schoolContext =
     entity.type === "school"
@@ -382,45 +522,250 @@ function EntityDetailPanel({
       <div className="super-admin__panel-content">
         {detailTab === "overview" && entityDetails && (
           <div className="super-admin__details">
+            {message && (
+              <div className={`config-message config-message-${message.type}`}>{message.text}</div>
+            )}
+            {loading && <p className="admin-muted">Loading details…</p>}
+
             <div className="super-admin__detail-row">
               <strong>ID:</strong> {entity.id}
             </div>
-            <div className="super-admin__detail-row">
-              <strong>Name:</strong> {entityDetails.name}
-            </div>
-            {entityDetails.slug && (
-              <div className="super-admin__detail-row">
-                <strong>Slug:</strong> {entityDetails.slug}
-              </div>
-            )}
-            {entity.type === "client" && (
+
+            {detail && (
               <>
                 <div className="super-admin__detail-row">
-                  <strong>Schools:</strong> {entityDetails.schools.length}
+                  <label>Name</label>
+                  <input
+                    className="form-input"
+                    value={detail.name || ""}
+                    onChange={(event) => updateDetail({ name: event.target.value })}
+                  />
                 </div>
+
+                {entity.type !== "client" && (
+                  <div className="super-admin__detail-row">
+                    <label>Slug</label>
+                    <input
+                      className="form-input"
+                      value={detail.slug || ""}
+                      onChange={(event) => updateDetail({ slug: event.target.value })}
+                    />
+                  </div>
+                )}
+
+                {entity.type === "client" && (
+                  <>
+                    <div className="super-admin__detail-row">
+                      <strong>Schools:</strong> {entityDetails.schools.length}
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <strong>Total Programs:</strong>{" "}
+                      {entityDetails.schools.reduce((sum: number, s: School) => sum + s.programs.length, 0)}
+                    </div>
+                  </>
+                )}
+
+                {entity.type === "school" && (
+                  <>
+                    <div className="super-admin__detail-row">
+                      <strong>Client:</strong> {entityDetails.clientName}
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <strong>Programs:</strong> {entityDetails.programs.length}
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <label>CRM Connection ID</label>
+                      <input
+                        className="form-input"
+                        value={detail.crmConnectionId || ""}
+                        onChange={(event) => updateDetail({ crmConnectionId: event.target.value })}
+                      />
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <label>Branding - Logo URL</label>
+                      <input
+                        className="form-input"
+                        value={detail.branding?.logoUrl || ""}
+                        onChange={(event) =>
+                          updateDetail({
+                            branding: { ...(detail.branding || {}), logoUrl: event.target.value }
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <label>Branding - Primary Color</label>
+                      <input
+                        className="form-input"
+                        value={detail.branding?.colors?.primary || ""}
+                        onChange={(event) =>
+                          updateDetail({
+                            branding: {
+                              ...(detail.branding || {}),
+                              colors: { ...(detail.branding?.colors || {}), primary: event.target.value }
+                            }
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <label>Branding - Secondary Color</label>
+                      <input
+                        className="form-input"
+                        value={detail.branding?.colors?.secondary || ""}
+                        onChange={(event) =>
+                          updateDetail({
+                            branding: {
+                              ...(detail.branding || {}),
+                              colors: { ...(detail.branding?.colors || {}), secondary: event.target.value }
+                            }
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <label>Compliance - Disclaimer</label>
+                      <textarea
+                        className="form-textarea"
+                        rows={2}
+                        value={detail.compliance?.disclaimerText || ""}
+                        onChange={(event) =>
+                          updateDetail({
+                            compliance: {
+                              ...(detail.compliance || {}),
+                              disclaimerText: event.target.value
+                            }
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <label>Compliance - Version</label>
+                      <input
+                        className="form-input"
+                        value={detail.compliance?.version || ""}
+                        onChange={(event) =>
+                          updateDetail({
+                            compliance: { ...(detail.compliance || {}), version: event.target.value }
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <label>Thank You Title</label>
+                      <input
+                        className="form-input"
+                        value={detail.thankYou?.title || ""}
+                        onChange={(event) =>
+                          updateDetail({
+                            thankYou: { ...(detail.thankYou || {}), title: event.target.value }
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <label>Thank You Message</label>
+                      <input
+                        className="form-input"
+                        value={detail.thankYou?.message || ""}
+                        onChange={(event) =>
+                          updateDetail({
+                            thankYou: { ...(detail.thankYou || {}), message: event.target.value }
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <label>Thank You Body</label>
+                      <textarea
+                        className="form-textarea"
+                        rows={2}
+                        value={detail.thankYou?.body || ""}
+                        onChange={(event) =>
+                          updateDetail({
+                            thankYou: { ...(detail.thankYou || {}), body: event.target.value }
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <label>Thank You CTA Text</label>
+                      <input
+                        className="form-input"
+                        value={detail.thankYou?.ctaText || ""}
+                        onChange={(event) =>
+                          updateDetail({
+                            thankYou: { ...(detail.thankYou || {}), ctaText: event.target.value }
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <label>Thank You CTA URL</label>
+                      <input
+                        className="form-input"
+                        value={detail.thankYou?.ctaUrl || ""}
+                        onChange={(event) =>
+                          updateDetail({
+                            thankYou: { ...(detail.thankYou || {}), ctaUrl: event.target.value }
+                          })
+                        }
+                      />
+                    </div>
+                  </>
+                )}
+
+                {entity.type === "program" && (
+                  <>
+                    <div className="super-admin__detail-row">
+                      <strong>School:</strong> {entityDetails.schoolName}
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <strong>Client:</strong> {entityDetails.clientName}
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <label>Template Type</label>
+                      <select
+                        className="form-input"
+                        value={detail.templateType || "full"}
+                        onChange={(event) => updateDetail({ templateType: event.target.value })}
+                      >
+                        <option value="full">Full</option>
+                        <option value="minimal">Minimal</option>
+                      </select>
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(detail.useQuizRouting)}
+                          onChange={(event) => updateDetail({ useQuizRouting: event.target.checked })}
+                        />
+                        Enable Quiz Routing
+                      </label>
+                    </div>
+                    <div className="super-admin__detail-row">
+                      <label>Available Campuses (IDs, comma-separated)</label>
+                      <input
+                        className="form-input"
+                        value={(detail.availableCampuses || []).join(", ")}
+                        onChange={(event) =>
+                          updateDetail({
+                            availableCampuses: event.target.value
+                              .split(",")
+                              .map((value: string) => value.trim())
+                              .filter(Boolean)
+                          })
+                        }
+                      />
+                    </div>
+                  </>
+                )}
+
                 <div className="super-admin__detail-row">
-                  <strong>Total Programs:</strong>{" "}
-                  {entityDetails.schools.reduce((sum: number, s: School) => sum + s.programs.length, 0)}
-                </div>
-              </>
-            )}
-            {entity.type === "school" && (
-              <>
-                <div className="super-admin__detail-row">
-                  <strong>Client:</strong> {entityDetails.clientName}
-                </div>
-                <div className="super-admin__detail-row">
-                  <strong>Programs:</strong> {entityDetails.programs.length}
-                </div>
-              </>
-            )}
-            {entity.type === "program" && (
-              <>
-                <div className="super-admin__detail-row">
-                  <strong>School:</strong> {entityDetails.schoolName}
-                </div>
-                <div className="super-admin__detail-row">
-                  <strong>Client:</strong> {entityDetails.clientName}
+                  <button className="admin-btn" onClick={saveDetail} disabled={saving}>
+                    {saving ? "Saving..." : "Save Changes"}
+                  </button>
                 </div>
               </>
             )}

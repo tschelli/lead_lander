@@ -156,6 +156,10 @@ const SuperClientCreateSchema = z.object({
   name: z.string().min(1)
 });
 
+const SuperClientUpdateSchema = z.object({
+  name: z.string().min(1).optional()
+});
+
 const SuperSchoolCreateSchema = z.object({
   id: z.string().min(1),
   slug: z.string().min(1),
@@ -163,11 +167,28 @@ const SuperSchoolCreateSchema = z.object({
   crmConnectionId: z.string().min(1)
 });
 
+const SuperSchoolUpdateSchema = z.object({
+  slug: z.string().min(1).optional(),
+  name: z.string().min(1).optional(),
+  branding: z.record(z.any()).optional(),
+  compliance: z.record(z.any()).optional(),
+  crmConnectionId: z.string().min(1).optional(),
+  thankYou: z.record(z.any()).optional()
+});
+
 const SuperProgramCreateSchema = z.object({
   id: z.string().min(1),
   schoolId: z.string().min(1),
   slug: z.string().min(1),
   name: z.string().min(1)
+});
+
+const SuperProgramUpdateSchema = z.object({
+  slug: z.string().min(1).optional(),
+  name: z.string().min(1).optional(),
+  availableCampuses: z.array(z.string()).optional(),
+  templateType: z.enum(["minimal", "full"]).optional(),
+  useQuizRouting: z.boolean().optional()
 });
 
 const SuperAdminUserCreateSchema = z.object({
@@ -2520,6 +2541,62 @@ app.post("/api/super/clients", async (req, res) => {
   }
 });
 
+app.get("/api/super/clients/:clientId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const clientId = req.params.clientId;
+    const result = await pool.query("SELECT id, name FROM clients WHERE id = $1", [clientId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Client not found" });
+    }
+
+    return res.json({ client: result.rows[0] });
+  } catch (error) {
+    console.error("Super client fetch error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.patch("/api/super/clients/:clientId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const clientId = req.params.clientId;
+    const parseResult = SuperClientUpdateSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
+    }
+
+    const existing = await pool.query("SELECT id, name FROM clients WHERE id = $1", [clientId]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: "Client not found" });
+    }
+
+    const nextName = parseResult.data.name ?? existing.rows[0].name;
+    await pool.query("UPDATE clients SET name = $1 WHERE id = $2", [nextName, clientId]);
+
+    await pool.query(
+      `INSERT INTO admin_audit_log (id, client_id, school_id, event, payload, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), clientId, null, "client_updated", { name: nextName }, new Date()]
+    );
+
+    return res.json({ id: clientId, name: nextName });
+  } catch (error) {
+    console.error("Super client update error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.post("/api/super/clients/:clientId/schools", async (req, res) => {
   try {
     const auth = res.locals.auth as AuthContext | null;
@@ -2566,6 +2643,99 @@ app.post("/api/super/clients/:clientId/schools", async (req, res) => {
     return res.status(201).json({ id, slug, name });
   } catch (error) {
     console.error("Super schools create error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/super/clients/:clientId/schools/:schoolId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { clientId, schoolId } = req.params;
+    const result = await pool.query(
+      `SELECT id, client_id, slug, name, branding, compliance, crm_connection_id, thank_you
+       FROM schools WHERE id = $1 AND client_id = $2`,
+      [schoolId, clientId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "School not found" });
+    }
+    return res.json({ school: result.rows[0] });
+  } catch (error) {
+    console.error("Super school fetch error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.patch("/api/super/clients/:clientId/schools/:schoolId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { clientId, schoolId } = req.params;
+    const parseResult = SuperSchoolUpdateSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
+    }
+
+    const existing = await pool.query(
+      `SELECT slug, name, branding, compliance, crm_connection_id, thank_you
+       FROM schools WHERE id = $1 AND client_id = $2`,
+      [schoolId, clientId]
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const current = existing.rows[0];
+    const next = {
+      slug: parseResult.data.slug ?? current.slug,
+      name: parseResult.data.name ?? current.name,
+      branding: parseResult.data.branding ?? current.branding,
+      compliance: parseResult.data.compliance ?? current.compliance,
+      crmConnectionId: parseResult.data.crmConnectionId ?? current.crm_connection_id,
+      thankYou: parseResult.data.thankYou ?? current.thank_you
+    };
+
+    await pool.query(
+      `UPDATE schools
+       SET slug = $1,
+           name = $2,
+           branding = $3,
+           compliance = $4,
+           crm_connection_id = $5,
+           thank_you = $6,
+           updated_at = $7
+       WHERE id = $8 AND client_id = $9`,
+      [
+        next.slug,
+        next.name,
+        next.branding,
+        next.compliance,
+        next.crmConnectionId,
+        next.thankYou,
+        new Date(),
+        schoolId,
+        clientId
+      ]
+    );
+
+    await pool.query(
+      `INSERT INTO admin_audit_log (id, client_id, school_id, event, payload, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), clientId, schoolId, "school_updated", next, new Date()]
+    );
+
+    return res.json({ id: schoolId, ...next });
+  } catch (error) {
+    console.error("Super school update error", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2618,6 +2788,96 @@ app.post("/api/super/clients/:clientId/programs", async (req, res) => {
     return res.status(201).json({ id, slug, name });
   } catch (error) {
     console.error("Super programs create error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/super/clients/:clientId/programs/:programId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { clientId, programId } = req.params;
+    const result = await pool.query(
+      `SELECT id, client_id, school_id, slug, name, available_campuses, template_type, use_quiz_routing
+       FROM programs WHERE id = $1 AND client_id = $2`,
+      [programId, clientId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Program not found" });
+    }
+    return res.json({ program: result.rows[0] });
+  } catch (error) {
+    console.error("Super program fetch error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.patch("/api/super/clients/:clientId/programs/:programId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { clientId, programId } = req.params;
+    const parseResult = SuperProgramUpdateSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
+    }
+
+    const existing = await pool.query(
+      `SELECT slug, name, available_campuses, template_type, use_quiz_routing
+       FROM programs WHERE id = $1 AND client_id = $2`,
+      [programId, clientId]
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: "Program not found" });
+    }
+
+    const current = existing.rows[0];
+    const next = {
+      slug: parseResult.data.slug ?? current.slug,
+      name: parseResult.data.name ?? current.name,
+      availableCampuses: parseResult.data.availableCampuses ?? current.available_campuses,
+      templateType: parseResult.data.templateType ?? current.template_type,
+      useQuizRouting: parseResult.data.useQuizRouting ?? current.use_quiz_routing
+    };
+
+    await pool.query(
+      `UPDATE programs
+       SET slug = $1,
+           name = $2,
+           available_campuses = $3,
+           template_type = $4,
+           use_quiz_routing = $5,
+           updated_at = $6
+       WHERE id = $7 AND client_id = $8`,
+      [
+        next.slug,
+        next.name,
+        next.availableCampuses || null,
+        next.templateType || null,
+        next.useQuizRouting || false,
+        new Date(),
+        programId,
+        clientId
+      ]
+    );
+
+    await pool.query(
+      `INSERT INTO admin_audit_log (id, client_id, school_id, event, payload, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [uuidv4(), clientId, null, "program_updated", next, new Date()]
+    );
+
+    return res.json({ id: programId, ...next });
+  } catch (error) {
+    console.error("Super program update error", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
