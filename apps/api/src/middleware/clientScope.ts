@@ -33,10 +33,11 @@ export async function requireSchoolAccess(
 
   try {
     // Fetch school and verify it belongs to user's client
+    // Support both school ID and slug for flexibility
     const result = await pool.query(
       `SELECT id, client_id, slug, name
        FROM schools
-       WHERE id = $1
+       WHERE id = $1 OR slug = $1
        LIMIT 1`,
       [schoolId]
     );
@@ -59,7 +60,7 @@ export async function requireSchoolAccess(
       role => (role.role === "school_admin" || role.role === "staff") && role.schoolId
     );
 
-    if (schoolScopedRole && schoolScopedRole.schoolId !== schoolId) {
+    if (schoolScopedRole && schoolScopedRole.schoolId !== school.id) {
       // User is restricted to a specific school and this isn't it
       res.status(403).json({ error: "Forbidden: Access to this school is not allowed" });
       return;

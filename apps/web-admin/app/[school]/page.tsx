@@ -40,7 +40,7 @@ export default async function AdminAccount({ params }: { params: { school: strin
   const requestHeaders = headers();
   const cookie = requestHeaders.get("cookie");
   if (!hasSessionCookie(cookie)) {
-    redirect(`/admin/${params.school}/login`);
+    redirect(`/${params.school}/login`);
   }
   const authHeaders: Record<string, string> = cookie ? { cookie } : {};
 
@@ -68,7 +68,7 @@ export default async function AdminAccount({ params }: { params: { school: strin
   });
 
   if (configResponse.status === 401 || configResponse.status === 403) {
-    redirect(`/admin/${params.school}/login`);
+    redirect(`/${params.school}/login`);
   }
 
   if (!configResponse.ok) {
@@ -96,14 +96,14 @@ export default async function AdminAccount({ params }: { params: { school: strin
   let metricsError: string | null = null;
 
   try {
-    const response = await fetch(`${apiBase}/api/admin/${school.slug}/metrics`, {
+    const response = await fetch(`${apiBase}/api/${school.slug}/metrics`, {
       credentials: "include",
       headers: authHeaders,
       cache: "no-store"
     });
 
     if (response.status === 401 || response.status === 403) {
-      redirect(`/admin/${school.slug}/login`);
+      redirect(`/${school.slug}/login`);
     }
 
     if (!response.ok) {
@@ -199,15 +199,15 @@ export default async function AdminAccount({ params }: { params: { school: strin
           )}
         </div>
         <div className="admin-official__actions">
-          <a className="admin-btn" href={`/admin/${school.slug}/database`}>Database</a>
+          <a className="admin-btn" href={`/${school.slug}/database`}>Database</a>
           {userHasConfigAccess && (
             <>
-              <a className="admin-official__ghost" href={`/admin/${school.slug}/config`}>Config builder</a>
-              <a className="admin-official__ghost" href={`/admin/${school.slug}/quiz`}>Quiz builder</a>
+              <a className="admin-official__ghost" href={`/${school.slug}/config`}>Config builder</a>
+              <a className="admin-official__ghost" href={`/${school.slug}/quiz`}>Quiz builder</a>
             </>
           )}
-          <a className="admin-official__ghost" href={`/admin/${school.slug}/users`}>Users</a>
-          <a className="admin-official__ghost" href={`/admin/${school.slug}/audit`}>Audit</a>
+          <a className="admin-official__ghost" href={`/${school.slug}/users`}>Users</a>
+          <a className="admin-official__ghost" href={`/${school.slug}/audit`}>Audit</a>
         </div>
       </header>
 
@@ -330,7 +330,7 @@ export default async function AdminAccount({ params }: { params: { school: strin
             <div key={row.label} className="admin-official__draft">
               <p className="admin-muted">{row.label}</p>
               <p>{row.detail}</p>
-              <a className="admin-official__ghost" href={`/admin/${school.slug}/config`}>Review</a>
+              <a className="admin-official__ghost" href={`/${school.slug}/config`}>Review</a>
             </div>
           ))}
         </section>
@@ -342,7 +342,7 @@ export default async function AdminAccount({ params }: { params: { school: strin
             <h3>Database snapshot</h3>
             <p className="admin-muted">Read-only preview of recent submissions.</p>
           </div>
-          <a className="admin-official__ghost" href={`/admin/${school.slug}/database`}>View all</a>
+          <a className="admin-official__ghost" href={`/${school.slug}/database`}>View all</a>
         </div>
         <table className="admin-table">
           <thead>
