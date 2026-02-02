@@ -92,7 +92,13 @@ export function ConfigBuilderPage({
       if (!res.ok) throw new Error("Failed to load config");
       const data = await res.json();
       const program = data.program as Program & { lead_form_config?: LeadFormConfig };
-      const leadForm = program.leadForm || program.lead_form_config;
+      const rawLeadForm = program.leadForm || program.lead_form_config;
+      const leadForm =
+        rawLeadForm && Array.isArray(rawLeadForm.fields)
+          ? rawLeadForm
+          : rawLeadForm
+          ? { ...rawLeadForm, fields: [] }
+          : undefined;
       const schoolThankYou = data.school?.thankYou || program.schoolThankYou;
       const existing = program.sectionsConfig || {
         order: [...DEFAULT_SECTIONS],
@@ -429,7 +435,7 @@ function LeadFormEditor({
   leadForm?: LeadFormConfig;
   onChange: (value: LeadFormConfig) => void;
 }) {
-  const fields = leadForm?.fields || [];
+  const fields = Array.isArray(leadForm?.fields) ? leadForm?.fields || [] : [];
 
   const updateField = (index: number, updates: Partial<LeadFormField>) => {
     const next = [...fields];
