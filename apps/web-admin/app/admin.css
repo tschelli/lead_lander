@@ -180,7 +180,9 @@
 
 .super-admin {
   display: grid;
-  gap: 24px;
+  grid-template-rows: auto 1fr;
+  gap: 16px;
+  min-height: 100vh;
 }
 
 .super-admin__topbar {
@@ -189,6 +191,11 @@
   gap: 16px;
   align-items: center;
   justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 16px 0;
+  background: linear-gradient(180deg, rgba(238, 242, 247, 0.98) 0%, rgba(238, 242, 247, 0.9) 100%);
 }
 
 .super-admin__topbar h1 {
@@ -226,6 +233,7 @@
   grid-template-columns: 320px 1fr;
   gap: 18px;
   align-items: start;
+  min-height: 0;
 }
 
 .super-admin__sidebar {
@@ -233,11 +241,8 @@
   color: #e2e8f0;
   border-radius: 18px;
   padding: 16px;
-  min-height: 520px;
-  position: sticky;
-  top: 24px;
-  height: calc(100vh - 48px);
-  overflow: auto;
+  height: calc(100vh - 120px);
+  overflow-y: auto;
 }
 
 .super-admin__sidebar-header {
@@ -321,7 +326,9 @@
 .super-admin__detail {
   display: grid;
   gap: 16px;
-  min-height: 520px;
+  height: calc(100vh - 120px);
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 .super-admin__breadcrumbs {
