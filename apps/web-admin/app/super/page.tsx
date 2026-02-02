@@ -1,16 +1,14 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasSessionCookie } from "@/lib/authCookies";
+import { isSuperAdmin, type User } from "@/lib/permissions";
 import { SuperAdminLayout } from "./SuperAdminLayout";
 import "./super-admin.css";
 
 export const dynamic = "force-dynamic";
 
 type AuthMeResponse = {
-  user: {
-    email: string;
-    role: string;
-  };
+  user: User;
 };
 
 type ClientsResponse = {
@@ -40,7 +38,7 @@ export default async function SuperAdminPage() {
     "http://localhost:4000";
 
   if (!hasSessionCookie(cookie)) {
-    redirect("/");
+    redirect("/super/login");
   }
 
   const authHeaders: Record<string, string> = cookie ? { cookie } : {};
@@ -52,14 +50,14 @@ export default async function SuperAdminPage() {
   });
 
   if (!authResponse.ok) {
-    redirect("/");
+    redirect("/super/login");
   }
 
   const authData = (await authResponse.json()) as AuthMeResponse;
 
   // Only super_admin role can access
-  if (authData.user.role !== "super_admin") {
-    redirect("/");
+  if (!isSuperAdmin(authData.user)) {
+    redirect("/super/login?error=unauthorized");
   }
 
   // Fetch all clients with nested schools and programs

@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasSessionCookie } from "@/lib/authCookies";
 import { SuperLoginForm } from "./superLoginForm";
-import "../../admin.css";
+import "../super-admin.css";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ export default async function SuperLoginPage() {
   }
 
   return (
-    <div className="admin-shell admin-official super-admin-shell">
+    <div className="admin-shell">
       <SuperLoginForm schoolSlug={SUPER_LOGIN_SCHOOL_SLUG} />
     </div>
   );

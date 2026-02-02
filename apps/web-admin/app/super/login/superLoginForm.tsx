@@ -13,7 +13,11 @@ export function SuperLoginForm({ schoolSlug }: SuperLoginFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    searchParams.get("error") === "unauthorized"
+      ? "You don't have permission to access Super Admin."
+      : null
+  );
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

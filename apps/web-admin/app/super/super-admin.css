@@ -546,6 +546,22 @@
   color: #991b1b;
 }
 
+/* Super Login Page */
+.super-login {
+  max-width: 520px;
+  margin: 60px auto;
+  display: grid;
+  gap: 16px;
+}
+
+.super-admin__error {
+  color: #ef4444;
+  background: #fee2e2;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
   .super-admin__sidebar {
