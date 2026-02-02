@@ -32,8 +32,12 @@ export default async function AdminDatabase({ params }: { params: { school: stri
     cache: "no-store"
   });
 
-  if (configResponse.status === 401 || configResponse.status === 403) {
+  if (configResponse.status === 401) {
     redirect(`/${params.school}/login`);
+  }
+
+  if (configResponse.status === 403 || configResponse.status === 404) {
+    redirect(`/${params.school}/not-authorized`);
   }
 
   if (!configResponse.ok) {

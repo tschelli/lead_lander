@@ -71,8 +71,12 @@ export default async function AdminQuizBuilder({ params }: { params: { school: s
     cache: "no-store"
   });
 
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
     redirect(`/${params.school}/login`);
+  }
+
+  if (response.status === 403 || response.status === 404) {
+    redirect(`/${params.school}/not-authorized`);
   }
 
   if (!response.ok) {

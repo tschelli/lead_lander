@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { LoginForm } from "./LoginForm";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +13,18 @@ export default async function AdminSchoolLogin({ params }: { params: { school: s
     process.env.ADMIN_API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     "http://localhost:4000";
+
+  const requestHeaders = headers();
+  const cookie = requestHeaders.get("cookie");
+  if (cookie) {
+    const authResponse = await fetch(`${apiBase}/api/auth/me`, {
+      headers: { cookie },
+      cache: "no-store"
+    });
+    if (authResponse.ok) {
+      redirect(`/${params.school}`);
+    }
+  }
 
   const response = await fetch(`${apiBase}/api/public/schools/${params.school}`, {
     cache: "no-store"
