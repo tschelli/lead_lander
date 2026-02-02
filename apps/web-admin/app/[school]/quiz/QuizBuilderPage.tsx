@@ -43,8 +43,6 @@ export function QuizBuilderPage({
   const [editingQuestion, setEditingQuestion] = useState<QuizQuestion | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
-
   useEffect(() => {
     fetchQuestions();
   }, []);
@@ -52,7 +50,7 @@ export function QuizBuilderPage({
   const fetchQuestions = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`${apiBase}/api/admin/schools/${schoolSlug}/quiz/questions`, {
+      const res = await fetch(`/api/admin/schools/${schoolSlug}/quiz/questions`, {
         credentials: "include"
       });
       if (!res.ok) throw new Error("Failed to load questions");
@@ -90,8 +88,8 @@ export function QuizBuilderPage({
     try {
       const method = editingQuestion.id ? "PUT" : "POST";
       const url = editingQuestion.id
-        ? `${apiBase}/api/admin/schools/${schoolSlug}/quiz/questions/${editingQuestion.id}`
-        : `${apiBase}/api/admin/schools/${schoolSlug}/quiz/questions`;
+        ? `/api/admin/schools/${schoolSlug}/quiz/questions/${editingQuestion.id}`
+        : `/api/admin/schools/${schoolSlug}/quiz/questions`;
 
       const res = await fetch(url, {
         method,
@@ -132,8 +130,8 @@ export function QuizBuilderPage({
       const method = option.id && !option.id.startsWith("temp-") ? "PUT" : "POST";
       const url =
         method === "PUT"
-          ? `${apiBase}/api/admin/schools/${schoolSlug}/quiz/questions/${questionId}/options/${option.id}`
-          : `${apiBase}/api/admin/schools/${schoolSlug}/quiz/questions/${questionId}/options`;
+          ? `/api/admin/schools/${schoolSlug}/quiz/questions/${questionId}/options/${option.id}`
+          : `/api/admin/schools/${schoolSlug}/quiz/questions/${questionId}/options`;
 
       await fetch(url, {
         method,
@@ -155,7 +153,7 @@ export function QuizBuilderPage({
 
     try {
       const res = await fetch(
-        `${apiBase}/api/admin/schools/${schoolSlug}/quiz/questions/${questionId}`,
+        `/api/admin/schools/${schoolSlug}/quiz/questions/${questionId}`,
         {
           method: "DELETE",
           credentials: "include"
@@ -177,7 +175,7 @@ export function QuizBuilderPage({
 
     try {
       await fetch(
-        `${apiBase}/api/admin/schools/${schoolSlug}/quiz/questions/${questionId}/options/${optionId}`,
+        `/api/admin/schools/${schoolSlug}/quiz/questions/${questionId}/options/${optionId}`,
         {
           method: "DELETE",
           credentials: "include"
