@@ -263,6 +263,33 @@
   background: rgba(148, 163, 184, 0.2);
 }
 
+.super-admin__node-btn.is-active {
+  background: rgba(59, 130, 246, 0.2);
+  color: #f8fafc;
+}
+
+.super-admin__node-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.super-admin__inline {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.6);
+  color: #e2e8f0;
+  border-radius: 999px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.super-admin__inline--school {
+  background: rgba(15, 23, 42, 0.45);
+}
+
 .super-admin__node-btn--school {
   margin-left: 12px;
 }

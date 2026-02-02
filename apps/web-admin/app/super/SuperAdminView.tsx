@@ -148,6 +148,16 @@ export function SuperAdminView({ fallbackSlug }: SuperAdminViewProps) {
     });
   };
 
+  const isActiveClient = (id: string) =>
+    selection.kind === "client" && selection.clientId === id;
+  const isActiveSchool = (clientId: string, schoolId: string) =>
+    selection.kind === "school" && selection.clientId === clientId && selection.schoolId === schoolId;
+  const isActiveProgram = (clientId: string, schoolId: string, programId: string) =>
+    selection.kind === "program" &&
+    selection.clientId === clientId &&
+    selection.schoolId === schoolId &&
+    selection.programId === programId;
+
   const toggleSchool = (id: string) => {
     setExpandedSchools((prev) => {
       const next = new Set(prev);
@@ -306,39 +316,75 @@ export function SuperAdminView({ fallbackSlug }: SuperAdminViewProps) {
             {!loading && filteredTree.length === 0 && <p className="admin-muted">No clients found.</p>}
             {filteredTree.map((client) => (
               <div key={client.id} className="super-admin__node">
-                <button
-                  className="super-admin__node-btn"
-                  onClick={() => {
-                    toggleClient(client.id);
-                    setSelection({ kind: "client", clientId: client.id });
-                    setClientId(client.id);
-                  }}
-                >
-                  <span>{expandedClients.has(client.id) ? "▾" : "▸"}</span>
-                  <span className="super-admin__node-title">{client.name}</span>
-                </button>
+                <div className="super-admin__node-row">
+                  <button
+                    className={`super-admin__node-btn ${isActiveClient(client.id) ? "is-active" : ""}`}
+                    onClick={() => {
+                      toggleClient(client.id);
+                      setSelection({ kind: "client", clientId: client.id });
+                      setClientId(client.id);
+                    }}
+                  >
+                    <span>{expandedClients.has(client.id) ? "▾" : "▸"}</span>
+                    <span className="super-admin__node-title">{client.name}</span>
+                  </button>
+                  <button
+                    className="super-admin__inline"
+                    title="Add school"
+                    onClick={() => {
+                      setSelection({ kind: "client", clientId: client.id });
+                      setClientId(client.id);
+                      setSchoolId("");
+                      setSchoolSlug("");
+                      setSchoolName("");
+                      setCrmConnectionId("");
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
                 {expandedClients.has(client.id) && (
                   <div className="super-admin__children">
                     {client.schools.map((school) => (
                       <div key={school.id} className="super-admin__node">
-                        <button
-                          className="super-admin__node-btn super-admin__node-btn--school"
-                          onClick={() => {
-                            toggleSchool(school.id);
-                            setSelection({ kind: "school", clientId: client.id, schoolId: school.id });
-                            setClientId(client.id);
-                            setSchoolId(school.id);
-                          }}
-                        >
-                          <span>{expandedSchools.has(school.id) ? "▾" : "▸"}</span>
-                          <span className="super-admin__node-title">{school.name}</span>
-                        </button>
+                        <div className="super-admin__node-row">
+                          <button
+                            className={`super-admin__node-btn super-admin__node-btn--school ${
+                              isActiveSchool(client.id, school.id) ? "is-active" : ""
+                            }`}
+                            onClick={() => {
+                              toggleSchool(school.id);
+                              setSelection({ kind: "school", clientId: client.id, schoolId: school.id });
+                              setClientId(client.id);
+                              setSchoolId(school.id);
+                            }}
+                          >
+                            <span>{expandedSchools.has(school.id) ? "▾" : "▸"}</span>
+                            <span className="super-admin__node-title">{school.name}</span>
+                          </button>
+                          <button
+                            className="super-admin__inline super-admin__inline--school"
+                            title="Add program"
+                            onClick={() => {
+                              setSelection({ kind: "school", clientId: client.id, schoolId: school.id });
+                              setClientId(client.id);
+                              setSchoolId(school.id);
+                              setProgramId("");
+                              setProgramSlug("");
+                              setProgramName("");
+                            }}
+                          >
+                            +
+                          </button>
+                        </div>
                         {expandedSchools.has(school.id) && (
                           <div className="super-admin__children super-admin__children--program">
                             {school.programs.map((program) => (
                               <button
                                 key={program.id}
-                                className="super-admin__node-btn super-admin__node-btn--program"
+                                className={`super-admin__node-btn super-admin__node-btn--program ${
+                                  isActiveProgram(client.id, school.id, program.id) ? "is-active" : ""
+                                }`}
                                 onClick={() => {
                                   setSelection({
                                     kind: "program",
