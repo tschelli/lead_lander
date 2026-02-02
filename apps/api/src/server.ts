@@ -631,8 +631,12 @@ app.get("/api/public/schools", async (_req, res) => {
 
 app.get("/api/public/schools/:school", async (req, res) => {
   try {
-    const schoolSlug = req.params.school;
-    const school = await getSchoolBySlug(schoolSlug);
+    const schoolParam = req.params.school;
+    // Support both slug and ID for flexibility
+    let school = await getSchoolBySlug(schoolParam);
+    if (!school) {
+      school = await getSchoolById(schoolParam);
+    }
     if (!school) {
       return res.status(404).json({ error: "School not found" });
     }
@@ -653,9 +657,13 @@ app.get("/api/public/schools/:school", async (req, res) => {
 
 app.get("/api/public/landing/:school/:program", async (req, res) => {
   try {
-    const schoolSlug = req.params.school;
+    const schoolParam = req.params.school;
     const programSlug = req.params.program;
-    const school = await getSchoolBySlug(schoolSlug);
+    // Support both slug and ID for flexibility
+    let school = await getSchoolBySlug(schoolParam);
+    if (!school) {
+      school = await getSchoolById(schoolParam);
+    }
     if (!school) {
       return res.status(404).json({ error: "School not found" });
     }
