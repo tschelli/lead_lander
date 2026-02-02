@@ -549,7 +549,8 @@ app.get("/api/auth/me", async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
-        emailVerified: user.emailVerified
+        emailVerified: user.emailVerified,
+        roles: roles
       },
       schools: accessibleSchools.map((school) => ({
         id: school.id,
