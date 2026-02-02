@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ConfigBuilderPage } from "../[school]/config/ConfigBuilderPage";
+import { QuizBuilderPage } from "../[school]/quiz/QuizBuilderPage";
 import "./super-admin.css";
 
 type Client = {
@@ -39,6 +41,8 @@ export function SuperAdminLayout({ initialClients, userEmail }: SuperAdminLayout
   const [searchQuery, setSearchQuery] = useState("");
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "create">("overview");
+  const [detailTab, setDetailTab] = useState<"overview" | "config" | "quiz" | "audit">("overview");
+  const mainRef = useRef<HTMLDivElement | null>(null);
 
   const toggleClient = (clientId: string) => {
     const newExpanded = new Set(expandedClients);
@@ -67,6 +71,7 @@ export function SuperAdminLayout({ initialClients, userEmail }: SuperAdminLayout
   ) => {
     setSelectedEntity({ type, id, parentIds });
     setActiveTab("overview");
+    setDetailTab("overview");
   };
 
   // Filter clients based on search
@@ -82,6 +87,12 @@ export function SuperAdminLayout({ initialClients, userEmail }: SuperAdminLayout
       )
     );
   });
+
+  useEffect(() => {
+    if (mainRef.current) {
+      mainRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [selectedEntity?.id, selectedEntity?.type]);
 
   return (
     <div className="super-admin">
@@ -247,10 +258,15 @@ export function SuperAdminLayout({ initialClients, userEmail }: SuperAdminLayout
         </aside>
 
         {/* Main Content */}
-        <main className="super-admin__main">
+        <main className="super-admin__main" ref={mainRef}>
           {activeTab === "create" && <CreateEntityPanel clients={clients} />}
           {activeTab === "overview" && selectedEntity && (
-            <EntityDetailPanel entity={selectedEntity} clients={clients} />
+            <EntityDetailPanel
+              entity={selectedEntity}
+              clients={clients}
+              detailTab={detailTab}
+              setDetailTab={setDetailTab}
+            />
           )}
           {activeTab === "overview" && !selectedEntity && <WelcomePanel />}
         </main>
@@ -290,7 +306,17 @@ function CreateEntityPanel({ clients }: { clients: Client[] }) {
 }
 
 // Entity Detail Panel
-function EntityDetailPanel({ entity, clients }: { entity: any; clients: Client[] }) {
+function EntityDetailPanel({
+  entity,
+  clients,
+  detailTab,
+  setDetailTab
+}: {
+  entity: any;
+  clients: Client[];
+  detailTab: "overview" | "config" | "quiz" | "audit";
+  setDetailTab: (value: "overview" | "config" | "quiz" | "audit") => void;
+}) {
   // Find the entity details
   let entityDetails: any = null;
   if (entity.type === "client") {
@@ -315,6 +341,24 @@ function EntityDetailPanel({ entity, clients }: { entity: any; clients: Client[]
     }
   }
 
+  const schoolContext =
+    entity.type === "school"
+      ? {
+          school: entityDetails as School,
+          programs: (entityDetails as School).programs
+        }
+      : entity.type === "program"
+        ? (() => {
+            const program = entityDetails as Program;
+            const school =
+              clients
+                .flatMap((client) => client.schools)
+                .find((s) => s.programs.some((p) => p.id === program.id)) || null;
+            if (!school) return null;
+            return { school, programs: [program] };
+          })()
+        : null;
+
   return (
     <div className="super-admin__panel">
       <div className="super-admin__panel-header">
@@ -325,13 +369,18 @@ function EntityDetailPanel({ entity, clients }: { entity: any; clients: Client[]
         </h2>
       </div>
       <div className="super-admin__panel-tabs">
-        <button className="super-admin__tab is-active">Overview</button>
-        <button className="super-admin__tab">Config</button>
-        <button className="super-admin__tab">Quiz</button>
-        <button className="super-admin__tab">Audit</button>
+        {(["overview", "config", "quiz", "audit"] as const).map((tab) => (
+          <button
+            key={tab}
+            className={`super-admin__tab ${detailTab === tab ? "is-active" : ""}`}
+            onClick={() => setDetailTab(tab)}
+          >
+            {tab === "config" ? "Config" : tab === "quiz" ? "Quiz" : tab === "audit" ? "Audit" : "Overview"}
+          </button>
+        ))}
       </div>
       <div className="super-admin__panel-content">
-        {entityDetails && (
+        {detailTab === "overview" && entityDetails && (
           <div className="super-admin__details">
             <div className="super-admin__detail-row">
               <strong>ID:</strong> {entity.id}
@@ -375,6 +424,20 @@ function EntityDetailPanel({ entity, clients }: { entity: any; clients: Client[]
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {detailTab === "config" && schoolContext && (
+          <ConfigBuilderPage schoolSlug={schoolContext.school.slug} programs={schoolContext.programs} />
+        )}
+
+        {detailTab === "quiz" && schoolContext && (
+          <QuizBuilderPage schoolSlug={schoolContext.school.slug} programs={schoolContext.programs} />
+        )}
+
+        {detailTab === "audit" && (
+          <div className="super-admin__details">
+            <p className="admin-muted">Audit log will appear here.</p>
           </div>
         )}
       </div>
