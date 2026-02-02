@@ -38,16 +38,11 @@ export default async function SuperAdminPage() {
     slug: school.slug,
     name: school.name
   }));
+  const fallbackSlug = schools[0]?.slug || "";
 
   return (
-    <div className="admin-shell admin-official">
-      <header className="admin-official__header">
-        <div>
-          <h1>Super admin</h1>
-          <p className="admin-muted">Manage clients, onboarding, and admin users.</p>
-        </div>
-      </header>
-      <SuperAdminView schools={schools} />
+    <div className="admin-shell admin-official super-admin-shell">
+      <SuperAdminView fallbackSlug={fallbackSlug} />
     </div>
   );
 }

@@ -2355,6 +2355,55 @@ app.get("/api/super/clients", async (req, res) => {
   }
 });
 
+app.get("/api/super/tree", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const [clientsResult, schoolsResult, programsResult] = await Promise.all([
+      pool.query("SELECT id, name FROM clients ORDER BY name"),
+      pool.query("SELECT id, client_id, slug, name FROM schools ORDER BY name"),
+      pool.query("SELECT id, client_id, school_id, slug, name FROM programs ORDER BY name")
+    ]);
+
+    const programsBySchool = new Map<string, Array<{ id: string; slug: string; name: string }>>();
+    for (const row of programsResult.rows) {
+      const list = programsBySchool.get(row.school_id) || [];
+      list.push({ id: row.id, slug: row.slug, name: row.name });
+      programsBySchool.set(row.school_id, list);
+    }
+
+    const schoolsByClient = new Map<
+      string,
+      Array<{ id: string; slug: string; name: string; programs: Array<{ id: string; slug: string; name: string }> }>
+    >();
+    for (const row of schoolsResult.rows) {
+      const list = schoolsByClient.get(row.client_id) || [];
+      list.push({
+        id: row.id,
+        slug: row.slug,
+        name: row.name,
+        programs: programsBySchool.get(row.id) || []
+      });
+      schoolsByClient.set(row.client_id, list);
+    }
+
+    const clients = clientsResult.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      schools: schoolsByClient.get(row.id) || []
+    }));
+
+    return res.json({ clients });
+  } catch (error) {
+    console.error("Super tree error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.post("/api/super/clients", async (req, res) => {
   try {
     const auth = res.locals.auth as AuthContext | null;
