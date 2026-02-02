@@ -26,7 +26,7 @@ import { resolveEntitiesByIds, resolveLandingPageBySlugs, type Config } from "@l
 import { requireSchoolAccess, requireClientAccess } from "./middleware/clientScope";
 import { requireConfigAccess } from "./middleware/configAccess";
 
-const app = express();
+export const app = express();
 
 function parseTrustProxy(value: string) {
   const normalized = value.trim().toLowerCase();
@@ -2877,6 +2877,8 @@ app.post("/api/submit", async (req, res) => {
   }
 });
 
-app.listen(env.port, () => {
-  console.log(`API listening on port ${env.port}`);
-});
+if (process.env.NODE_ENV !== "test") {
+  app.listen(env.port, () => {
+    console.log(`API listening on port ${env.port}`);
+  });
+}

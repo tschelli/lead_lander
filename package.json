@@ -16,6 +16,7 @@
     "migrate": "tsx scripts/migrate.ts",
     "seed:config": "tsx scripts/seed-config.ts",
     "verify:migrations": "tsx scripts/verify-migrations.ts",
+    "check:slugs": "tsx scripts/check-duplicate-slugs.ts",
     "summary": "tsx scripts/monthly-summary.ts",
     "requeue": "tsx scripts/requeue-missing-crm.ts"
   },
