@@ -46,7 +46,7 @@ export function UsersView({ schoolSlug, schools }: UsersViewProps) {
   const loadUsers = () => {
     setLoading(true);
     setError(null);
-    fetch(`/api/admin/${schoolSlug}/users`, {
+    fetch(`/api/admin/schools/${schoolSlug}/users`, {
       credentials: "include",
       cache: "no-store"
     })
@@ -87,7 +87,7 @@ export function UsersView({ schoolSlug, schools }: UsersViewProps) {
         schoolId: inviteRole === "client_admin" ? null : inviteSchoolId
       };
 
-      const response = await fetch(`/api/admin/${schoolSlug}/users`, {
+      const response = await fetch(`/api/admin/schools/${schoolSlug}/users`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -122,7 +122,7 @@ export function UsersView({ schoolSlug, schools }: UsersViewProps) {
         isActive
       };
 
-      const response = await fetch(`/api/admin/${schoolSlug}/users/${userId}`, {
+      const response = await fetch(`/api/admin/schools/${schoolSlug}/users/${userId}`, {
         method: "PATCH",
         credentials: "include",
         headers: {

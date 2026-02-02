@@ -234,7 +234,7 @@ export function DatabaseView({ schoolSlug, apiBase, programs, campuses }: Databa
     }
 
     const response = await fetch(
-      `/api/admin/${schoolSlug}/submissions/export?${params.toString()}`,
+      `/api/admin/schools/${schoolSlug}/submissions/export?${params.toString()}`,
       {
         headers,
         credentials: "include",

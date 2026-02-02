@@ -61,7 +61,7 @@ export default async function AdminAccount({ params }: { params: { school: strin
     console.error("Failed to fetch user permissions", error);
   }
 
-  const configResponse = await fetch(`${apiBase}/api/admin/${params.school}/config`, {
+  const configResponse = await fetch(`${apiBase}/api/admin/schools/${params.school}/config`, {
     credentials: "include",
     headers: authHeaders,
     cache: "no-store"
@@ -96,7 +96,7 @@ export default async function AdminAccount({ params }: { params: { school: strin
   let metricsError: string | null = null;
 
   try {
-    const response = await fetch(`${apiBase}/api/${school.slug}/metrics`, {
+    const response = await fetch(`${apiBase}/api/admin/schools/${school.slug}/metrics`, {
       credentials: "include",
       headers: authHeaders,
       cache: "no-store"

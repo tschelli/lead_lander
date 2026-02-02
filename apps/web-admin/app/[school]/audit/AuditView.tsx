@@ -23,7 +23,7 @@ export function AuditView({ schoolSlug }: AuditViewProps) {
     setLoading(true);
     setError(null);
 
-    fetch(`/api/admin/${schoolSlug}/audit?limit=100`, {
+    fetch(`/api/admin/schools/${schoolSlug}/audit?limit=100`, {
       credentials: "include",
       cache: "no-store"
     })

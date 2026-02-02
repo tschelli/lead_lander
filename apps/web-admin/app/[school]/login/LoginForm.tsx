@@ -42,7 +42,7 @@ export function LoginForm({ schoolSlug, schoolName }: LoginFormProps) {
       }
 
       const next = searchParams.get("next");
-      router.replace(next || `/admin/${schoolSlug}`);
+      router.replace(next || `/${schoolSlug}`);
     } catch (err) {
       setError((err as Error).message || "Login failed");
     } finally {

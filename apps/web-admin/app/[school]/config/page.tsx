@@ -65,7 +65,7 @@ export default async function AdminConfig({ params }: { params: { school: string
     );
   }
 
-  const response = await fetch(`${apiBase}/api/admin/${params.school}/config`, {
+  const response = await fetch(`${apiBase}/api/admin/schools/${params.school}/config`, {
     credentials: "include",
     headers: cookie ? { cookie } : {},
     cache: "no-store"

@@ -73,7 +73,7 @@ export function ConfigBuilder({ programs, schoolSlug }: ConfigBuilderProps) {
     setSaving(true);
     setStatus(null);
     try {
-      const response = await fetch(`/api/admin/${schoolSlug}/config`, {
+      const response = await fetch(`/api/admin/schools/${schoolSlug}/config`, {
         method: "POST",
         credentials: "include",
         headers: {

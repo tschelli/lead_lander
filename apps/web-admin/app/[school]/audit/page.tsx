@@ -25,7 +25,7 @@ export default async function AdminAudit({ params }: { params: { school: string 
     "http://localhost:4000";
   const authHeaders: Record<string, string> = cookie ? { cookie } : {};
 
-  const configResponse = await fetch(`${apiBase}/api/admin/${params.school}/config`, {
+  const configResponse = await fetch(`${apiBase}/api/admin/schools/${params.school}/config`, {
     credentials: "include",
     headers: authHeaders,
     cache: "no-store"
