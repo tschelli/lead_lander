@@ -16,6 +16,8 @@ export function LoginForm({ schoolSlug, schoolName }: LoginFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
@@ -27,7 +29,7 @@ export function LoginForm({ schoolSlug, schoolName }: LoginFormProps) {
 
     setLoading(true);
     try {
-      const response = await fetch("/api/auth/login", {
+      const response = await fetch(`${apiBase}/api/auth/login`, {
         method: "POST",
         credentials: "include",
         headers: {

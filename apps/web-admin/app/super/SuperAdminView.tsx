@@ -37,10 +37,12 @@ export function SuperAdminView({ schools }: SuperAdminViewProps) {
   const [adminPassword, setAdminPassword] = useState("");
   const [saving, setSaving] = useState(false);
 
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+
   const loadClients = () => {
     setLoading(true);
     setError(null);
-    fetch("/api/super/clients", { credentials: "include", cache: "no-store" })
+    fetch(`${apiBase}/api/super/clients`, { credentials: "include", cache: "no-store" })
       .then(async (response) => {
         if (response.status === 401 || response.status === 403) {
           window.location.href = schools.length > 0
@@ -69,7 +71,7 @@ export function SuperAdminView({ schools }: SuperAdminViewProps) {
     setError(null);
 
     try {
-      const response = await fetch("/api/super/clients", {
+      const response = await fetch(`${apiBase}/api/super/clients`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -95,7 +97,7 @@ export function SuperAdminView({ schools }: SuperAdminViewProps) {
     setError(null);
 
     try {
-      const response = await fetch(`/api/super/clients/${clientId}/schools`, {
+      const response = await fetch(`${apiBase}/api/super/clients/${clientId}/schools`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -128,7 +130,7 @@ export function SuperAdminView({ schools }: SuperAdminViewProps) {
     setError(null);
 
     try {
-      const response = await fetch(`/api/super/clients/${clientId}/programs`, {
+      const response = await fetch(`${apiBase}/api/super/clients/${clientId}/programs`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -160,7 +162,7 @@ export function SuperAdminView({ schools }: SuperAdminViewProps) {
     setError(null);
 
     try {
-      const response = await fetch(`/api/super/clients/${clientId}/admin-user`, {
+      const response = await fetch(`${apiBase}/api/super/clients/${clientId}/admin-user`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
