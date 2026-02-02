@@ -1600,7 +1600,7 @@ app.get(
   }
 );
 
-// Create/update landing page config (creates draft)
+// Create/update landing page config (immediate apply)
 app.put(
   "/api/admin/schools/:schoolId/config/landing/:programId",
   requireSchoolAccess,
@@ -1638,51 +1638,83 @@ app.put(
         return res.status(404).json({ error: "Program not found" });
       }
 
-      // Create draft in config_versions
-      const draftId = uuidv4();
       const now = new Date();
+      const payload = {
+        landingCopy,
+        templateType,
+        heroImage,
+        heroBackgroundColor,
+        heroBackgroundImage,
+        duration,
+        salaryRange,
+        placementRate,
+        graduationRate,
+        highlights,
+        testimonials,
+        faqs,
+        stats,
+        sectionsConfig
+      };
 
       await pool.query(
         `
-        INSERT INTO config_versions
-          (id, client_id, school_id, entity_type, entity_id, payload, created_by, status, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+        UPDATE programs
+        SET landing_copy = $1,
+            template_type = $2,
+            hero_image = $3,
+            hero_background_color = $4,
+            hero_background_image = $5,
+            duration = $6,
+            salary_range = $7,
+            placement_rate = $8,
+            graduation_rate = $9,
+            highlights = $10,
+            testimonials = $11,
+            faqs = $12,
+            stats = $13,
+            sections_config = $14,
+            updated_at = $15
+        WHERE id = $16 AND client_id = $17 AND school_id = $18
       `,
         [
-          draftId,
-          school.client_id,
-          school.id,
-          "program_landing",
+          landingCopy || null,
+          templateType || null,
+          heroImage || null,
+          heroBackgroundColor || null,
+          heroBackgroundImage || null,
+          duration || null,
+          salaryRange || null,
+          placementRate || null,
+          graduationRate || null,
+          highlights || [],
+          testimonials || [],
+          faqs || [],
+          stats || {},
+          sectionsConfig || null,
+          now,
           programId,
-          {
-            landingCopy,
-            templateType,
-            heroImage,
-            heroBackgroundColor,
-            heroBackgroundImage,
-            duration,
-            salaryRange,
-            placementRate,
-            graduationRate,
-            highlights,
-            testimonials,
-            faqs,
-            stats,
-            sectionsConfig
-          },
-          auth.user.id,
-          "draft",
-          now
+          school.client_id,
+          school.id
         ]
       );
 
-      await logAdminAudit(school.client_id, school.id, "config_draft_created", {
-        draftId,
+      const versionId = uuidv4();
+      await pool.query(
+        `
+        INSERT INTO config_versions
+          (id, client_id, school_id, entity_type, entity_id, payload, created_by, status, created_at, updated_at, approved_by, approved_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $7, $9)
+      `,
+        [versionId, school.client_id, school.id, "program_landing", programId, payload, auth.user.id, "approved", now]
+      );
+
+      await logAdminAudit(school.client_id, school.id, "config_updated", {
+        versionId,
         programId,
         entityType: "program_landing"
       });
 
-      return res.json({ draftId, status: "draft" });
+      return res.json({ status: "updated", versionId });
     } catch (error) {
       console.error("Config landing update error", error);
       return res.status(500).json({ error: "Internal server error" });

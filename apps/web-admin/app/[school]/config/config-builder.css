@@ -113,6 +113,23 @@
   color: rgba(15, 23, 42, 0.9);
 }
 
+.config-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.config-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.04);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 /* Template Selector */
 .template-selector {
   display: grid;
