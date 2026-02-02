@@ -541,8 +541,13 @@ app.get("/api/auth/me", async (req, res) => {
 
     let accessibleSchools: Array<{ id: string; slug: string; name: string }> = [];
     if (user.clientId) {
-      const config = await getConfigForClient(user.clientId);
-      accessibleSchools = getAllowedSchools(auth, config);
+      try {
+        const config = await getConfigForClient(user.clientId);
+        accessibleSchools = getAllowedSchools(auth, config);
+      } catch (configError) {
+        console.error("Failed to load config for client", user.clientId, configError);
+        // Super admins may not have valid config, so we continue without schools
+      }
     }
 
     return res.json({
