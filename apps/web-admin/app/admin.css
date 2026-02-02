@@ -225,6 +225,7 @@
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 18px;
+  align-items: start;
 }
 
 .super-admin__sidebar {
@@ -233,6 +234,32 @@
   border-radius: 18px;
   padding: 16px;
   min-height: 520px;
+  position: sticky;
+  top: 24px;
+  height: calc(100vh - 48px);
+  overflow: auto;
+}
+
+.super-admin__sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.super-admin__sidebar-action {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: transparent;
+  color: #e2e8f0;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.7rem;
+  cursor: pointer;
+  font-weight: 600;
 }
 
 .super-admin__tree {
@@ -268,28 +295,6 @@
   color: #f8fafc;
 }
 
-.super-admin__node-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 6px;
-  align-items: center;
-}
-
-.super-admin__inline {
-  border: 1px solid rgba(148, 163, 184, 0.4);
-  background: rgba(15, 23, 42, 0.6);
-  color: #e2e8f0;
-  border-radius: 999px;
-  width: 28px;
-  height: 28px;
-  cursor: pointer;
-  font-weight: 700;
-}
-
-.super-admin__inline--school {
-  background: rgba(15, 23, 42, 0.45);
-}
-
 .super-admin__node-btn--school {
   margin-left: 12px;
 }
@@ -316,6 +321,7 @@
 .super-admin__detail {
   display: grid;
   gap: 16px;
+  min-height: 520px;
 }
 
 .super-admin__breadcrumbs {

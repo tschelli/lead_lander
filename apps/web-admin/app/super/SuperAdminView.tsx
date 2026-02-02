@@ -310,73 +310,53 @@ export function SuperAdminView({ fallbackSlug }: SuperAdminViewProps) {
 
       <div className="super-admin__layout">
         <aside className="super-admin__sidebar">
+          <div className="super-admin__sidebar-header">
+            <span>Clients</span>
+            <button
+              className="super-admin__sidebar-action"
+              onClick={() => {
+                resetForms();
+                setSelection({ kind: "create-client" });
+              }}
+            >
+              Create
+            </button>
+          </div>
           <div className="super-admin__tree">
             {loading && <p className="admin-muted">Loading clients…</p>}
             {error && <p className="admin-muted super-admin__error">{error}</p>}
             {!loading && filteredTree.length === 0 && <p className="admin-muted">No clients found.</p>}
             {filteredTree.map((client) => (
               <div key={client.id} className="super-admin__node">
-                <div className="super-admin__node-row">
-                  <button
-                    className={`super-admin__node-btn ${isActiveClient(client.id) ? "is-active" : ""}`}
-                    onClick={() => {
-                      toggleClient(client.id);
-                      setSelection({ kind: "client", clientId: client.id });
-                      setClientId(client.id);
-                    }}
-                  >
-                    <span>{expandedClients.has(client.id) ? "▾" : "▸"}</span>
-                    <span className="super-admin__node-title">{client.name}</span>
-                  </button>
-                  <button
-                    className="super-admin__inline"
-                    title="Add school"
-                    onClick={() => {
-                      setSelection({ kind: "client", clientId: client.id });
-                      setClientId(client.id);
-                      setSchoolId("");
-                      setSchoolSlug("");
-                      setSchoolName("");
-                      setCrmConnectionId("");
-                    }}
-                  >
-                    +
-                  </button>
-                </div>
+                <button
+                  className={`super-admin__node-btn ${isActiveClient(client.id) ? "is-active" : ""}`}
+                  onClick={() => {
+                    toggleClient(client.id);
+                    setSelection({ kind: "client", clientId: client.id });
+                    setClientId(client.id);
+                  }}
+                >
+                  <span>{expandedClients.has(client.id) ? "▾" : "▸"}</span>
+                  <span className="super-admin__node-title">{client.name}</span>
+                </button>
                 {expandedClients.has(client.id) && (
                   <div className="super-admin__children">
                     {client.schools.map((school) => (
                       <div key={school.id} className="super-admin__node">
-                        <div className="super-admin__node-row">
-                          <button
-                            className={`super-admin__node-btn super-admin__node-btn--school ${
-                              isActiveSchool(client.id, school.id) ? "is-active" : ""
-                            }`}
-                            onClick={() => {
-                              toggleSchool(school.id);
-                              setSelection({ kind: "school", clientId: client.id, schoolId: school.id });
-                              setClientId(client.id);
-                              setSchoolId(school.id);
-                            }}
-                          >
-                            <span>{expandedSchools.has(school.id) ? "▾" : "▸"}</span>
-                            <span className="super-admin__node-title">{school.name}</span>
-                          </button>
-                          <button
-                            className="super-admin__inline super-admin__inline--school"
-                            title="Add program"
-                            onClick={() => {
-                              setSelection({ kind: "school", clientId: client.id, schoolId: school.id });
-                              setClientId(client.id);
-                              setSchoolId(school.id);
-                              setProgramId("");
-                              setProgramSlug("");
-                              setProgramName("");
-                            }}
-                          >
-                            +
-                          </button>
-                        </div>
+                        <button
+                          className={`super-admin__node-btn super-admin__node-btn--school ${
+                            isActiveSchool(client.id, school.id) ? "is-active" : ""
+                          }`}
+                          onClick={() => {
+                            toggleSchool(school.id);
+                            setSelection({ kind: "school", clientId: client.id, schoolId: school.id });
+                            setClientId(client.id);
+                            setSchoolId(school.id);
+                          }}
+                        >
+                          <span>{expandedSchools.has(school.id) ? "▾" : "▸"}</span>
+                          <span className="super-admin__node-title">{school.name}</span>
+                        </button>
                         {expandedSchools.has(school.id) && (
                           <div className="super-admin__children super-admin__children--program">
                             {school.programs.map((program) => (
