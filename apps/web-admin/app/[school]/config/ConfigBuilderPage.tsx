@@ -19,6 +19,10 @@ type Program = {
   heroImage?: string;
   heroBackgroundColor?: string;
   heroBackgroundImage?: string;
+  duration?: string;
+  salaryRange?: string;
+  placementRate?: string;
+  graduationRate?: string;
   highlights?: Array<{ icon?: string; text: string }>;
   testimonials?: Array<{ quote: string; author: string; role?: string; photo?: string }>;
   faqs?: Array<{ question: string; answer: string }>;
