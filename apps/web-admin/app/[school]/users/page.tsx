@@ -20,7 +20,7 @@ export default async function AdminUsers({ params }: { params: { school: string 
   const requestHeaders = headers();
   const cookie = requestHeaders.get("cookie");
   if (!hasSessionCookie(cookie)) {
-    redirect(`/admin/${params.school}/login`);
+    redirect(`/${params.school}/login`);
   }
 
   const apiBase =
@@ -36,7 +36,7 @@ export default async function AdminUsers({ params }: { params: { school: string 
   });
 
   if (configResponse.status === 401 || configResponse.status === 403) {
-    redirect(`/admin/${params.school}/login`);
+    redirect(`/${params.school}/login`);
   }
 
   if (!configResponse.ok) {
@@ -64,7 +64,7 @@ export default async function AdminUsers({ params }: { params: { school: string 
   });
 
   if (schoolsResponse.status === 401 || schoolsResponse.status === 403) {
-    redirect(`/admin/${params.school}/login`);
+    redirect(`/${params.school}/login`);
   }
 
   if (!schoolsResponse.ok) {
@@ -90,7 +90,7 @@ export default async function AdminUsers({ params }: { params: { school: string 
           </div>
         </div>
         <div className="admin-official__actions">
-          <a className="admin-official__ghost" href={`/admin/${school.slug}`}>Back to dashboard</a>
+          <a className="admin-official__ghost" href={`/${school.slug}`}>Back to dashboard</a>
         </div>
       </header>
 

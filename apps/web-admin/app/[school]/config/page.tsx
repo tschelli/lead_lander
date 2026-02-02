@@ -27,7 +27,7 @@ export default async function AdminConfig({ params }: { params: { school: string
   const requestHeaders = headers();
   const cookie = requestHeaders.get("cookie");
   if (!hasSessionCookie(cookie)) {
-    redirect(`/admin/${params.school}/login`);
+    redirect(`/${params.school}/login`);
   }
 
   const apiBase =
@@ -43,7 +43,7 @@ export default async function AdminConfig({ params }: { params: { school: string
   });
 
   if (authResponse.status === 401) {
-    redirect(`/admin/${params.school}/login`);
+    redirect(`/${params.school}/login`);
   }
 
   const authData = (await authResponse.json()) as AuthMeResponse;
@@ -57,7 +57,7 @@ export default async function AdminConfig({ params }: { params: { school: string
           <p className="admin-muted">
             Config builder access requires Super Admin or Client Admin role.
           </p>
-          <a className="admin-btn" href={`/admin/${params.school}`}>
+          <a className="admin-btn" href={`/${params.school}`}>
             Back to Dashboard
           </a>
         </div>
@@ -72,7 +72,7 @@ export default async function AdminConfig({ params }: { params: { school: string
   });
 
   if (response.status === 401 || response.status === 403) {
-    redirect(`/admin/${params.school}/login`);
+    redirect(`/${params.school}/login`);
   }
 
   if (!response.ok) {
@@ -109,7 +109,7 @@ export default async function AdminConfig({ params }: { params: { school: string
           </div>
         </div>
         <div className="admin-official__actions">
-          <a className="admin-btn" href={`/admin/${school.slug}`}>
+          <a className="admin-btn" href={`/${school.slug}`}>
             Back to dashboard
           </a>
         </div>

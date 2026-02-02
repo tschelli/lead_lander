@@ -44,7 +44,7 @@ export function SuperAdminView({ schools }: SuperAdminViewProps) {
       .then(async (response) => {
         if (response.status === 401 || response.status === 403) {
           window.location.href = schools.length > 0
-            ? `/admin/${schools[0].slug}/login?next=/admin/super`
+            ? `/${schools[0].slug}/login?next=/super`
             : "/admin";
           return;
         }

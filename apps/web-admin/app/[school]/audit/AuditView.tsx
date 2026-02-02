@@ -29,7 +29,7 @@ export function AuditView({ schoolSlug }: AuditViewProps) {
     })
       .then(async (response) => {
         if (response.status === 401 || response.status === 403) {
-          window.location.href = `/admin/${schoolSlug}/login`;
+          window.location.href = `/${schoolSlug}/login`;
           return;
         }
         if (!response.ok) {

@@ -146,7 +146,7 @@ export function DatabaseView({ schoolSlug, apiBase, programs, campuses }: Databa
     setError(null);
 
     const base = "/api";
-    fetch(`${base}/admin/${schoolSlug}/submissions?${queryParams.toString()}`, {
+    fetch(`${base}/admin/schools/${schoolSlug}/submissions?${queryParams.toString()}`, {
       headers,
       credentials: "include",
       cache: "no-store"
@@ -172,11 +172,11 @@ export function DatabaseView({ schoolSlug, apiBase, programs, campuses }: Databa
       .catch((err: Error) => {
         if (!active) return;
         if (err.message === "unauthorized") {
-          window.location.href = `/admin/${schoolSlug}/login`;
+          window.location.href = `/${schoolSlug}/login`;
           return;
         }
         if (err.message === "forbidden") {
-          window.location.href = `/admin/${schoolSlug}/login`;
+          window.location.href = `/${schoolSlug}/login`;
           return;
         }
         setError(err.message);

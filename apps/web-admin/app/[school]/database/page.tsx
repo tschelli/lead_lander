@@ -22,7 +22,7 @@ export default async function AdminDatabase({ params }: { params: { school: stri
   const requestHeaders = headers();
   const cookie = requestHeaders.get("cookie");
   if (!hasSessionCookie(cookie)) {
-    redirect(`/admin/${params.school}/login`);
+    redirect(`/${params.school}/login`);
   }
   const authHeaders: Record<string, string> = cookie ? { cookie } : {};
 
@@ -33,7 +33,7 @@ export default async function AdminDatabase({ params }: { params: { school: stri
   });
 
   if (configResponse.status === 401 || configResponse.status === 403) {
-    redirect(`/admin/${params.school}/login`);
+    redirect(`/${params.school}/login`);
   }
 
   if (!configResponse.ok) {
@@ -72,7 +72,7 @@ export default async function AdminDatabase({ params }: { params: { school: stri
           </div>
         </div>
         <div className="admin-official__actions">
-          <a className="admin-btn" href={`/admin/${school.slug}`}>Back to dashboard</a>
+          <a className="admin-btn" href={`/${school.slug}`}>Back to dashboard</a>
         </div>
       </header>
 

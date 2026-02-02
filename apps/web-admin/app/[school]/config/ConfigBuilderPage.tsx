@@ -782,7 +782,7 @@ function PreviewPanel({ schoolSlug, program }: { schoolSlug: string; program: Pr
       </div>
       <div className="preview-frame">
         <iframe
-          src={`/admin/${schoolSlug}?preview=${program.slug}`}
+          src={`/${schoolSlug}?preview=${program.slug}`}
           title="Landing Page Preview"
           className="preview-iframe"
         />

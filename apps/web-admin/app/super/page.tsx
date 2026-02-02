@@ -25,7 +25,7 @@ export default async function SuperAdminPage() {
 
   if (!hasSessionCookie(cookie)) {
     if (fallbackSchool) {
-      redirect(`/admin/${fallbackSchool.slug}/login?next=/admin/super`);
+      redirect(`/${fallbackSchool.slug}/login?next=/super`);
     }
     redirect("/admin");
   }
