@@ -91,7 +91,18 @@ export function ConfigBuilderPage({
       );
       if (!res.ok) throw new Error("Failed to load config");
       const data = await res.json();
-      const program = data.program as Program & { lead_form_config?: LeadFormConfig };
+      const program = data.program as Program & {
+        lead_form_config?: LeadFormConfig;
+        landing_copy?: Program["landingCopy"];
+        template_type?: string;
+        hero_image?: string;
+        hero_background_color?: string;
+        hero_background_image?: string;
+        salary_range?: string;
+        placement_rate?: string;
+        graduation_rate?: string;
+        sections_config?: Program["sectionsConfig"];
+      };
       const rawLeadForm = program.leadForm || program.lead_form_config;
       const leadForm =
         rawLeadForm && Array.isArray(rawLeadForm.fields)
@@ -104,19 +115,31 @@ export function ConfigBuilderPage({
       const testimonials = Array.isArray(program.testimonials) ? program.testimonials : [];
       const faqs = Array.isArray(program.faqs) ? program.faqs : [];
       const stats = program.stats && typeof program.stats === "object" ? program.stats : {};
+      const normalized: Program = {
+        ...program,
+        landingCopy: program.landingCopy || program.landing_copy,
+        templateType: program.templateType || program.template_type,
+        heroImage: program.heroImage || program.hero_image,
+        heroBackgroundColor: program.heroBackgroundColor || program.hero_background_color,
+        heroBackgroundImage: program.heroBackgroundImage || program.hero_background_image,
+        salaryRange: program.salaryRange || program.salary_range,
+        placementRate: program.placementRate || program.placement_rate,
+        graduationRate: program.graduationRate || program.graduation_rate,
+        sectionsConfig: program.sectionsConfig || program.sections_config,
+        highlights,
+        testimonials,
+        faqs,
+        stats,
+        leadForm: leadForm || { fields: [] },
+        schoolThankYou: schoolThankYou || {}
+      };
       const existing = program.sectionsConfig || {
         order: [...DEFAULT_SECTIONS],
         visible: Object.fromEntries(DEFAULT_SECTIONS.map((key) => [key, true]))
       };
       setConfig({
-        ...program,
-        leadForm: leadForm || { fields: [] },
-        schoolThankYou: schoolThankYou || {},
-        highlights,
-        testimonials,
-        faqs,
-        stats,
-        sectionsConfig: existing
+        ...normalized,
+        sectionsConfig: normalized.sectionsConfig || existing
       });
       setIsDirty(false);
     } catch (error) {
@@ -278,6 +301,11 @@ export function ConfigBuilderPage({
                 schoolSlug={schoolSlug}
                 program={selectedProgram}
                 baseUrl={landingPreviewBase}
+              />
+              <PreviewDebugPanel
+                baseUrl={landingPreviewBase}
+                schoolSlug={schoolSlug}
+                programSlug={selectedProgram?.slug}
               />
             </div>
           </div>
@@ -746,6 +774,29 @@ function HeroSectionEditor({
             />
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PreviewDebugPanel({
+  baseUrl,
+  schoolSlug,
+  programSlug
+}: {
+  baseUrl: string;
+  schoolSlug: string;
+  programSlug?: string;
+}) {
+  const url = baseUrl && programSlug ? `${baseUrl}/${programSlug}` : "";
+  return (
+    <div className="config-card preview-debug">
+      <h3>Preview Debug</h3>
+      <div className="admin-muted">
+        <div>Base URL: {baseUrl || "(missing NEXT_PUBLIC_LANDING_BASE_URL)"}</div>
+        <div>School Slug: {schoolSlug}</div>
+        <div>Program Slug: {programSlug || "(none selected)"}</div>
+        <div>Preview URL: {url || "(incomplete)"}</div>
       </div>
     </div>
   );
