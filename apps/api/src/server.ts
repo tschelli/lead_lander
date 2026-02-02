@@ -573,7 +573,9 @@ app.post("/api/auth/request-password-reset", async (req, res) => {
 
     const school = await getSchoolBySlug(parseResult.data.schoolSlug);
     if (!school) {
-      return res.status(404).json({ error: "School not found" });
+      // Security: Avoid revealing whether a school exists.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return res.json({ status: "ok" });
     }
 
     await requestPasswordReset(authRepo, school.client_id, parseResult.data.email);
