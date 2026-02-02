@@ -100,6 +100,10 @@ export function ConfigBuilderPage({
           ? { ...rawLeadForm, fields: [] }
           : undefined;
       const schoolThankYou = data.school?.thankYou || program.schoolThankYou;
+      const highlights = Array.isArray(program.highlights) ? program.highlights : [];
+      const testimonials = Array.isArray(program.testimonials) ? program.testimonials : [];
+      const faqs = Array.isArray(program.faqs) ? program.faqs : [];
+      const stats = program.stats && typeof program.stats === "object" ? program.stats : {};
       const existing = program.sectionsConfig || {
         order: [...DEFAULT_SECTIONS],
         visible: Object.fromEntries(DEFAULT_SECTIONS.map((key) => [key, true]))
@@ -108,6 +112,10 @@ export function ConfigBuilderPage({
         ...program,
         leadForm: leadForm || { fields: [] },
         schoolThankYou: schoolThankYou || {},
+        highlights,
+        testimonials,
+        faqs,
+        stats,
         sectionsConfig: existing
       });
       setIsDirty(false);
@@ -507,6 +515,7 @@ function LeadFormEditor({
       <div className="lead-form-fields">
         {fields.map((field, index) => {
           const supportsOptions = field.type === "select" || field.type === "radio" || field.type === "checkbox";
+          const options = Array.isArray(field.options) ? field.options : [];
           return (
             <div key={`${field.id}-${index}`} className="lead-form-field">
               <div className="lead-form-row">
@@ -580,7 +589,7 @@ function LeadFormEditor({
               {supportsOptions && (
                 <div className="lead-form-options">
                   <label className="admin-muted">Options</label>
-                  {field.options?.map((option, optionIndex) => (
+                  {options.map((option, optionIndex) => (
                     <div key={`${field.id}-option-${optionIndex}`} className="config-list-item">
                       <input
                         className="form-input-sm"
