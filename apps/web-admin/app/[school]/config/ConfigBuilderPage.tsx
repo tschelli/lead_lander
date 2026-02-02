@@ -60,7 +60,6 @@ export function ConfigBuilderPage({
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
   useEffect(() => {
     if (selectedProgram) {
@@ -77,7 +76,7 @@ export function ConfigBuilderPage({
   const loadProgramConfig = async (programId: string) => {
     try {
       const res = await fetch(
-        `${apiBase}/api/admin/schools/${schoolSlug}/config/landing/${programId}`,
+        `/api/admin/schools/${schoolSlug}/config/landing/${programId}`,
         { credentials: "include" }
       );
       if (!res.ok) throw new Error("Failed to load config");
@@ -91,7 +90,7 @@ export function ConfigBuilderPage({
 
   const loadDrafts = async () => {
     try {
-      const res = await fetch(`${apiBase}/api/admin/schools/${schoolSlug}/config/drafts`, {
+      const res = await fetch(`/api/admin/schools/${schoolSlug}/config/drafts`, {
         credentials: "include"
       });
       if (!res.ok) throw new Error("Failed to load drafts");
@@ -108,7 +107,7 @@ export function ConfigBuilderPage({
     setIsSaving(true);
     try {
       const res = await fetch(
-        `${apiBase}/api/admin/schools/${schoolSlug}/config/landing/${selectedProgram.id}`,
+        `/api/admin/schools/${schoolSlug}/config/landing/${selectedProgram.id}`,
         {
           method: "PUT",
           credentials: "include",
@@ -132,7 +131,7 @@ export function ConfigBuilderPage({
   const submitDraft = async (draftId: string) => {
     try {
       const res = await fetch(
-        `${apiBase}/api/admin/schools/${schoolSlug}/config/drafts/${draftId}/submit`,
+        `/api/admin/schools/${schoolSlug}/config/drafts/${draftId}/submit`,
         {
           method: "POST",
           credentials: "include"
@@ -151,7 +150,7 @@ export function ConfigBuilderPage({
   const approveDraft = async (draftId: string) => {
     try {
       const res = await fetch(
-        `${apiBase}/api/admin/schools/${schoolSlug}/config/drafts/${draftId}/approve`,
+        `/api/admin/schools/${schoolSlug}/config/drafts/${draftId}/approve`,
         {
           method: "POST",
           credentials: "include"
@@ -172,7 +171,7 @@ export function ConfigBuilderPage({
     const reason = prompt("Reason for rejection (optional):");
     try {
       const res = await fetch(
-        `${apiBase}/api/admin/schools/${schoolSlug}/config/drafts/${draftId}/reject`,
+        `/api/admin/schools/${schoolSlug}/config/drafts/${draftId}/reject`,
         {
           method: "POST",
           credentials: "include",
