@@ -200,7 +200,7 @@ async function loadAuthContext(req: express.Request): Promise<AuthContext | null
 
 async function getSchoolBySlug(slug: string) {
   const result = await pool.query(
-    `SELECT id, client_id, slug, name, branding, compliance, crm_connection_id
+    `SELECT id, client_id, slug, name, branding, compliance, crm_connection_id, thank_you
      FROM schools
      WHERE slug = $1
      LIMIT 1`,
@@ -211,7 +211,7 @@ async function getSchoolBySlug(slug: string) {
 
 async function getSchoolById(id: string) {
   const result = await pool.query(
-    `SELECT id, client_id, slug, name, branding, compliance, crm_connection_id
+    `SELECT id, client_id, slug, name, branding, compliance, crm_connection_id, thank_you
      FROM schools
      WHERE id = $1
      LIMIT 1`,
@@ -636,7 +636,8 @@ app.get("/api/public/schools/:school", async (req, res) => {
         slug: school.slug,
         name: school.name,
         branding: school.branding,
-        compliance: school.compliance
+        compliance: school.compliance,
+        thankYou: school.thank_you || null
       }
     });
   } catch (error) {
@@ -1579,7 +1580,7 @@ app.get(
       const result = await pool.query(
         `
         SELECT id, name, slug, landing_copy,
-               template_type, hero_image, hero_background_color, hero_background_image,
+               lead_form_config, template_type, hero_image, hero_background_color, hero_background_image,
                duration, salary_range, placement_rate, graduation_rate,
                highlights, testimonials, faqs, stats, sections_config
         FROM programs
@@ -1592,7 +1593,15 @@ app.get(
         return res.status(404).json({ error: "Program not found" });
       }
 
-      return res.json({ program: result.rows[0] });
+      return res.json({
+        program: result.rows[0],
+        school: {
+          id: school.id,
+          name: school.name,
+          slug: school.slug,
+          thankYou: school.thank_you || null
+        }
+      });
     } catch (error) {
       console.error("Config landing fetch error", error);
       return res.status(500).json({ error: "Internal server error" });
@@ -1613,6 +1622,7 @@ app.put(
 
       const {
         landingCopy,
+        leadForm,
         templateType,
         heroImage,
         heroBackgroundColor,
@@ -1625,7 +1635,8 @@ app.put(
         testimonials,
         faqs,
         stats,
-        sectionsConfig
+        sectionsConfig,
+        schoolThankYou
       } = req.body;
 
       // Verify program exists and belongs to this school
@@ -1641,6 +1652,7 @@ app.put(
       const now = new Date();
       const payload = {
         landingCopy,
+        leadForm,
         templateType,
         heroImage,
         heroBackgroundColor,
@@ -1653,31 +1665,34 @@ app.put(
         testimonials,
         faqs,
         stats,
-        sectionsConfig
+        sectionsConfig,
+        schoolThankYou
       };
 
       await pool.query(
         `
         UPDATE programs
         SET landing_copy = $1,
-            template_type = $2,
-            hero_image = $3,
-            hero_background_color = $4,
-            hero_background_image = $5,
-            duration = $6,
-            salary_range = $7,
-            placement_rate = $8,
-            graduation_rate = $9,
-            highlights = $10,
-            testimonials = $11,
-            faqs = $12,
-            stats = $13,
-            sections_config = $14,
-            updated_at = $15
-        WHERE id = $16 AND client_id = $17 AND school_id = $18
+            lead_form_config = $2,
+            template_type = $3,
+            hero_image = $4,
+            hero_background_color = $5,
+            hero_background_image = $6,
+            duration = $7,
+            salary_range = $8,
+            placement_rate = $9,
+            graduation_rate = $10,
+            highlights = $11,
+            testimonials = $12,
+            faqs = $13,
+            stats = $14,
+            sections_config = $15,
+            updated_at = $16
+        WHERE id = $17 AND client_id = $18 AND school_id = $19
       `,
         [
           landingCopy || null,
+          leadForm || null,
           templateType || null,
           heroImage || null,
           heroBackgroundColor || null,
@@ -1698,14 +1713,43 @@ app.put(
         ]
       );
 
+      if (schoolThankYou !== undefined) {
+        await pool.query(
+          `
+          UPDATE schools
+          SET thank_you = $1,
+              updated_at = $2
+          WHERE id = $3 AND client_id = $4
+        `,
+          [schoolThankYou || null, now, school.id, school.client_id]
+        );
+      }
+
+      const versionResult = await pool.query(
+        "SELECT COALESCE(MAX(version), 0) AS version FROM config_versions WHERE client_id = $1 AND school_id = $2",
+        [school.client_id, school.id]
+      );
+      const nextVersion = Number(versionResult.rows[0]?.version || 0) + 1;
+
       const versionId = uuidv4();
       await pool.query(
         `
         INSERT INTO config_versions
-          (id, client_id, school_id, entity_type, entity_id, payload, created_by, status, created_at, updated_at, approved_by, approved_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $7, $9)
+          (id, client_id, school_id, version, entity_type, entity_id, payload, created_by, status, created_at, updated_at, approved_by, approved_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10, $8, $10)
       `,
-        [versionId, school.client_id, school.id, "program_landing", programId, payload, auth.user.id, "approved", now]
+        [
+          versionId,
+          school.client_id,
+          school.id,
+          nextVersion,
+          "program_landing",
+          programId,
+          payload,
+          auth.user.id,
+          "approved",
+          now
+        ]
       );
 
       await logAdminAudit(school.client_id, school.id, "config_updated", {

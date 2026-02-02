@@ -27,12 +27,20 @@ type LandingResponse = {
         disclaimerText: string;
         version: string;
       };
+      thankYou?: {
+        title?: string;
+        message?: string;
+        body?: string;
+        ctaText?: string;
+        ctaUrl?: string;
+      };
     };
     program: {
       id: string;
       name: string;
       availableCampuses?: string[];
       templateType?: "minimal" | "full";
+      leadForm?: Config["programs"][number]["leadForm"];
       heroImage?: string;
       highlights?: Array<{ icon?: string; text: string }>;
       testimonials?: Array<{ quote: string; author: string; role?: string; photo?: string }>;
@@ -184,6 +192,9 @@ export default async function LandingPage({
           consentText={school.compliance.disclaimerText}
           consentVersion={school.compliance.version}
           questionOverrides={questionOverrides}
+          leadFormFields={program.leadForm?.fields}
+          consentLabel={program.leadForm?.consentLabel}
+          thankYou={school.thankYou}
           programOptions={programOptions}
           campusOptions={campusOptionsWithFallback}
           initialAnswers={{ program_interest: program.id }}

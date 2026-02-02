@@ -1,0 +1,2 @@
+ALTER TABLE schools
+  ADD COLUMN IF NOT EXISTS thank_you JSONB;

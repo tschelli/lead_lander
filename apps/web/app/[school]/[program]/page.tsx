@@ -22,11 +22,19 @@ type LandingResponse = {
         disclaimerText: string;
         version: string;
       };
+      thankYou?: {
+        title?: string;
+        message?: string;
+        body?: string;
+        ctaText?: string;
+        ctaUrl?: string;
+      };
     };
     program: {
       id: string;
       name: string;
       availableCampuses?: string[];
+      leadForm?: Config["programs"][number]["leadForm"];
     };
     landingCopy: {
       headline: string;
@@ -137,6 +145,9 @@ export default async function LandingPage({
           consentText={school.compliance.disclaimerText}
           consentVersion={school.compliance.version}
           questionOverrides={questionOverrides}
+          leadFormFields={program.leadForm?.fields}
+          consentLabel={program.leadForm?.consentLabel}
+          thankYou={school.thankYou}
           programOptions={programOptions}
           campusOptions={campusOptionsWithFallback}
           initialAnswers={{ program_interest: program.id }}

@@ -43,8 +43,8 @@ async function seed() {
         throw new Error(`Missing client for school ${school.id}`);
       }
       await client.query(
-        `INSERT INTO schools (id, client_id, slug, name, branding, compliance, crm_connection_id, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+        `INSERT INTO schools (id, client_id, slug, name, branding, compliance, crm_connection_id, thank_you, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
          ON CONFLICT (id) DO UPDATE SET
            client_id = EXCLUDED.client_id,
            slug = EXCLUDED.slug,
@@ -52,6 +52,7 @@ async function seed() {
            branding = EXCLUDED.branding,
            compliance = EXCLUDED.compliance,
            crm_connection_id = EXCLUDED.crm_connection_id,
+           thank_you = EXCLUDED.thank_you,
            updated_at = EXCLUDED.updated_at`,
         [
           school.id,
@@ -61,6 +62,7 @@ async function seed() {
           toJson(school.branding),
           toJson(school.compliance),
           school.crmConnectionId,
+          toJson(school.thankYou || null),
           now
         ]
       );
@@ -92,14 +94,15 @@ async function seed() {
         throw new Error(`Missing school for program ${program.id}`);
       }
       await client.query(
-        `INSERT INTO programs (id, client_id, school_id, slug, name, landing_copy, question_overrides, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+        `INSERT INTO programs (id, client_id, school_id, slug, name, landing_copy, lead_form_config, question_overrides, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $8)
          ON CONFLICT (id) DO UPDATE SET
            client_id = EXCLUDED.client_id,
            school_id = EXCLUDED.school_id,
            slug = EXCLUDED.slug,
            name = EXCLUDED.name,
            landing_copy = EXCLUDED.landing_copy,
+           lead_form_config = EXCLUDED.lead_form_config,
            question_overrides = EXCLUDED.question_overrides,
            updated_at = EXCLUDED.updated_at`,
         [
@@ -109,6 +112,7 @@ async function seed() {
           program.slug,
           program.name,
           toJson(program.landingCopy),
+          toJson(program.leadForm || null),
           toJson(program.questionOverrides || null),
           now
         ]
