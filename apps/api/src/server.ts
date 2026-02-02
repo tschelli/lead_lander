@@ -670,7 +670,7 @@ app.get("/api/public/landing/:school/:program", async (req, res) => {
     }
 
     const config = await getConfigForClient(school.client_id);
-    const resolved = resolveLandingPageBySlugs(config, schoolSlug, programSlug);
+    const resolved = resolveLandingPageBySlugs(config, school.slug, programSlug);
     if (!resolved) {
       return res.status(404).json({ error: "Landing page not found" });
     }
