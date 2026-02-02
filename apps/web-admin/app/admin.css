@@ -361,6 +361,13 @@
   color: #fca5a5;
 }
 
+.super-login {
+  max-width: 520px;
+  margin: 0 auto;
+  display: grid;
+  gap: 16px;
+}
+
 @media (max-width: 960px) {
   .super-admin__layout {
     grid-template-columns: 1fr;
