@@ -1,6 +1,8 @@
+import { headers } from "next/headers";
+
 export const dynamic = "force-dynamic";
 
-type SchoolsResponse = {
+type AuthMeResponse = {
   schools: { id: string; slug: string; name: string }[];
 };
 
@@ -9,8 +11,21 @@ export default async function AdminIndex() {
     process.env.ADMIN_API_BASE_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     "http://localhost:4000";
-  const response = await fetch(`${apiBase}/api/public/schools`, { cache: "no-store" });
-  const data = response.ok ? ((await response.json()) as SchoolsResponse) : { schools: [] };
+  const requestHeaders = headers();
+  const cookie = requestHeaders.get("cookie");
+  const authHeaders: Record<string, string> = cookie ? { cookie } : {};
+
+  let schools: AuthMeResponse["schools"] = [];
+  if (cookie) {
+    const response = await fetch(`${apiBase}/api/auth/me`, {
+      headers: authHeaders,
+      cache: "no-store"
+    });
+    if (response.ok) {
+      const data = (await response.json()) as AuthMeResponse;
+      schools = data.schools || [];
+    }
+  }
 
   return (
     <div className="admin-shell">
@@ -25,7 +40,7 @@ export default async function AdminIndex() {
       </header>
 
       <nav className="admin-nav">
-        {data.schools.map((school) => (
+        {schools.map((school) => (
           <a key={school.id} href={`/admin/${school.slug}`}>
             {school.name}
           </a>

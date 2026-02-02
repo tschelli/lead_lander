@@ -32,14 +32,19 @@ export async function requireSchoolAccess(
   }
 
   try {
-    // Fetch school and verify it belongs to user's client
-    // Support both school ID and slug for flexibility
+    if (!auth.user.clientId) {
+      res.status(403).json({ error: "Forbidden: No client access" });
+      return;
+    }
+
+    // Fetch school scoped to the user's client to avoid cross-tenant leakage.
+    // Support both school ID and slug for flexibility.
     const result = await pool.query(
       `SELECT id, client_id, slug, name
        FROM schools
-       WHERE id = $1 OR slug = $1
+       WHERE client_id = $2 AND (id = $1 OR slug = $1)
        LIMIT 1`,
-      [schoolId]
+      [schoolId, auth.user.clientId]
     );
 
     const school = result.rows[0];
@@ -49,19 +54,13 @@ export async function requireSchoolAccess(
       return;
     }
 
-    // Verify school belongs to user's client
-    if (school.client_id !== auth.user.clientId) {
-      res.status(403).json({ error: "Forbidden: Access to this school is not allowed" });
-      return;
-    }
-
     // Check if user has school-specific access (for school_admin and staff roles)
-    const schoolScopedRole = auth.roles.find(
-      role => (role.role === "school_admin" || role.role === "staff") && role.schoolId
+    const schoolScopedRoles = auth.roles.filter(
+      (role) => (role.role === "school_admin" || role.role === "staff") && role.schoolId
     );
 
-    if (schoolScopedRole && schoolScopedRole.schoolId !== school.id) {
-      // User is restricted to a specific school and this isn't it
+    if (schoolScopedRoles.length > 0 && !schoolScopedRoles.some((role) => role.schoolId === school.id)) {
+      // User is restricted to specific schools and this isn't one of them
       res.status(403).json({ error: "Forbidden: Access to this school is not allowed" });
       return;
     }

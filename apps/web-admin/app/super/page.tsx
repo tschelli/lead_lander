@@ -6,7 +6,7 @@ import "../admin.css";
 
 export const dynamic = "force-dynamic";
 
-type SchoolsResponse = {
+type AuthMeResponse = {
   schools: { id: string; slug: string; name: string }[];
 };
 
@@ -19,18 +19,21 @@ export default async function SuperAdminPage() {
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     "http://localhost:4000";
 
-  const schoolsResponse = await fetch(`${apiBase}/api/public/schools`, { cache: "no-store" });
-  const schoolsData = schoolsResponse.ok ? ((await schoolsResponse.json()) as SchoolsResponse) : { schools: [] };
-  const fallbackSchool = schoolsData.schools[0];
-
   if (!hasSessionCookie(cookie)) {
-    if (fallbackSchool) {
-      redirect(`/${fallbackSchool.slug}/login?next=/super`);
-    }
-    redirect("/admin");
+    redirect("/");
   }
 
-  const schools = schoolsData.schools.map((school) => ({
+  const schoolsResponse = await fetch(`${apiBase}/api/auth/me`, {
+    headers: cookie ? { cookie } : {},
+    cache: "no-store"
+  });
+
+  if (!schoolsResponse.ok) {
+    redirect("/");
+  }
+
+  const schoolsData = (await schoolsResponse.json()) as AuthMeResponse;
+  const schools = (schoolsData.schools || []).map((school) => ({
     id: school.id,
     slug: school.slug,
     name: school.name

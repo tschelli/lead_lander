@@ -612,24 +612,6 @@ app.get("/healthz", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-// SECURITY: Endpoint removed - lists all schools which is information disclosure
-// Public schools list endpoint for admin dashboard homepage
-app.get("/api/public/schools", async (_req, res) => {
-  try {
-    const result = await pool.query("SELECT id, slug, name FROM schools ORDER BY name ASC");
-    return res.json({
-      schools: result.rows.map((row) => ({
-        id: row.id,
-        slug: row.slug,
-        name: row.name
-      }))
-    });
-  } catch (error) {
-    console.error("Public schools error", error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
-
 app.get("/api/public/schools/:school", async (req, res) => {
   try {
     const schoolParam = req.params.school;
