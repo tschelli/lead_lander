@@ -8,6 +8,8 @@ type Program = {
   name: string;
   slug: string;
   templateType?: string;
+  leadForm?: LeadFormConfig;
+  schoolThankYou?: ThankYouConfig;
   landingCopy?: {
     headline: string;
     subheadline: string;
@@ -17,6 +19,10 @@ type Program = {
   heroImage?: string;
   heroBackgroundColor?: string;
   heroBackgroundImage?: string;
+  duration?: string;
+  salaryRange?: string;
+  placementRate?: string;
+  graduationRate?: string;
   highlights?: Array<{ icon?: string; text: string }>;
   testimonials?: Array<{ quote: string; author: string; role?: string; photo?: string }>;
   faqs?: Array<{ question: string; answer: string }>;
@@ -32,15 +38,30 @@ type Program = {
   };
 };
 
-type Draft = {
+type LeadFormField = {
   id: string;
-  entityType: string;
-  entityName?: string;
-  status: string;
-  creatorEmail?: string;
-  createdAt: string;
-  rejectionReason?: string;
+  label: string;
+  type: "text" | "email" | "tel" | "select" | "radio" | "checkbox" | "textarea";
+  required?: boolean;
+  options?: Array<{ label: string; value: string }>;
+  mapTo?: "answers" | "campus_id";
+  placeholder?: string;
 };
+
+type LeadFormConfig = {
+  fields?: LeadFormField[];
+  consentLabel?: string;
+};
+
+type ThankYouConfig = {
+  title?: string;
+  message?: string;
+  body?: string;
+  ctaText?: string;
+  ctaUrl?: string;
+};
+
+const DEFAULT_SECTIONS = ["hero", "highlights", "stats", "testimonials", "form", "faqs"] as const;
 
 export function ConfigBuilderPage({
   schoolSlug,
@@ -49,7 +70,6 @@ export function ConfigBuilderPage({
   schoolSlug: string;
   programs: Program[];
 }) {
-  const [activeTab, setActiveTab] = useState<"landing" | "drafts">("landing");
   const [programs] = useState<Program[]>(initialPrograms);
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(
     programs.length > 0 ? programs[0] : null
@@ -57,10 +77,9 @@ export function ConfigBuilderPage({
   const [config, setConfig] = useState<Program | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [drafts, setDrafts] = useState<Draft[]>([]);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const landingPreviewBase = process.env.NEXT_PUBLIC_LANDING_BASE_URL || "";
 
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
   useEffect(() => {
     if (selectedProgram) {
@@ -68,47 +87,77 @@ export function ConfigBuilderPage({
     }
   }, [selectedProgram?.id]);
 
-  useEffect(() => {
-    if (activeTab === "drafts") {
-      loadDrafts();
-    }
-  }, [activeTab]);
-
   const loadProgramConfig = async (programId: string) => {
     try {
       const res = await fetch(
-        `${apiBase}/api/admin/schools/${schoolSlug}/config/landing/${programId}`,
+        `/api/admin/schools/${schoolSlug}/config/landing/${programId}`,
         { credentials: "include" }
       );
       if (!res.ok) throw new Error("Failed to load config");
       const data = await res.json();
-      setConfig(data.program);
+      const program = data.program as Program & {
+        lead_form_config?: LeadFormConfig;
+        landing_copy?: Program["landingCopy"];
+        template_type?: string;
+        hero_image?: string;
+        hero_background_color?: string;
+        hero_background_image?: string;
+        salary_range?: string;
+        placement_rate?: string;
+        graduation_rate?: string;
+        sections_config?: Program["sectionsConfig"];
+      };
+      const rawLeadForm = program.leadForm || program.lead_form_config;
+      const leadForm =
+        rawLeadForm && Array.isArray(rawLeadForm.fields)
+          ? rawLeadForm
+          : rawLeadForm
+          ? { ...rawLeadForm, fields: [] }
+          : undefined;
+      const schoolThankYou = data.school?.thankYou || program.schoolThankYou;
+      const highlights = Array.isArray(program.highlights) ? program.highlights : [];
+      const testimonials = Array.isArray(program.testimonials) ? program.testimonials : [];
+      const faqs = Array.isArray(program.faqs) ? program.faqs : [];
+      const stats = program.stats && typeof program.stats === "object" ? program.stats : {};
+      const normalized: Program = {
+        ...program,
+        landingCopy: program.landingCopy || program.landing_copy,
+        templateType: program.templateType || program.template_type,
+        heroImage: program.heroImage || program.hero_image,
+        heroBackgroundColor: program.heroBackgroundColor || program.hero_background_color,
+        heroBackgroundImage: program.heroBackgroundImage || program.hero_background_image,
+        salaryRange: program.salaryRange || program.salary_range,
+        placementRate: program.placementRate || program.placement_rate,
+        graduationRate: program.graduationRate || program.graduation_rate,
+        sectionsConfig: program.sectionsConfig || program.sections_config,
+        highlights,
+        testimonials,
+        faqs,
+        stats,
+        leadForm: leadForm || { fields: [] },
+        schoolThankYou: schoolThankYou || {}
+      };
+      const existing = program.sectionsConfig || {
+        order: [...DEFAULT_SECTIONS],
+        visible: Object.fromEntries(DEFAULT_SECTIONS.map((key) => [key, true]))
+      };
+      setConfig({
+        ...normalized,
+        sectionsConfig: normalized.sectionsConfig || existing
+      });
       setIsDirty(false);
     } catch (error) {
       showMessage("error", "Failed to load configuration");
     }
   };
 
-  const loadDrafts = async () => {
-    try {
-      const res = await fetch(`${apiBase}/api/admin/schools/${schoolSlug}/config/drafts`, {
-        credentials: "include"
-      });
-      if (!res.ok) throw new Error("Failed to load drafts");
-      const data = await res.json();
-      setDrafts(data.drafts);
-    } catch (error) {
-      showMessage("error", "Failed to load drafts");
-    }
-  };
-
-  const saveDraft = async () => {
+  const saveConfig = async () => {
     if (!selectedProgram || !config) return;
 
     setIsSaving(true);
     try {
       const res = await fetch(
-        `${apiBase}/api/admin/schools/${schoolSlug}/config/landing/${selectedProgram.id}`,
+        `/api/admin/schools/${schoolSlug}/config/landing/${selectedProgram.id}`,
         {
           method: "PUT",
           credentials: "include",
@@ -117,76 +166,14 @@ export function ConfigBuilderPage({
         }
       );
 
-      if (!res.ok) throw new Error("Failed to save draft");
+      if (!res.ok) throw new Error("Failed to save changes");
 
-      const data = await res.json();
-      showMessage("success", `Draft saved! ID: ${data.draftId}`);
+      showMessage("success", "Changes saved.");
       setIsDirty(false);
     } catch (error) {
-      showMessage("error", "Failed to save draft");
+      showMessage("error", "Failed to save changes");
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const submitDraft = async (draftId: string) => {
-    try {
-      const res = await fetch(
-        `${apiBase}/api/admin/schools/${schoolSlug}/config/drafts/${draftId}/submit`,
-        {
-          method: "POST",
-          credentials: "include"
-        }
-      );
-
-      if (!res.ok) throw new Error("Failed to submit draft");
-
-      showMessage("success", "Draft submitted for approval!");
-      loadDrafts();
-    } catch (error) {
-      showMessage("error", "Failed to submit draft");
-    }
-  };
-
-  const approveDraft = async (draftId: string) => {
-    try {
-      const res = await fetch(
-        `${apiBase}/api/admin/schools/${schoolSlug}/config/drafts/${draftId}/approve`,
-        {
-          method: "POST",
-          credentials: "include"
-        }
-      );
-
-      if (!res.ok) throw new Error("Failed to approve draft");
-
-      showMessage("success", "Draft approved! Changes are now live.");
-      loadDrafts();
-      if (selectedProgram) loadProgramConfig(selectedProgram.id);
-    } catch (error) {
-      showMessage("error", "Failed to approve draft");
-    }
-  };
-
-  const rejectDraft = async (draftId: string) => {
-    const reason = prompt("Reason for rejection (optional):");
-    try {
-      const res = await fetch(
-        `${apiBase}/api/admin/schools/${schoolSlug}/config/drafts/${draftId}/reject`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reason })
-        }
-      );
-
-      if (!res.ok) throw new Error("Failed to reject draft");
-
-      showMessage("success", "Draft rejected");
-      loadDrafts();
-    } catch (error) {
-      showMessage("error", "Failed to reject draft");
     }
   };
 
@@ -203,22 +190,6 @@ export function ConfigBuilderPage({
 
   return (
     <div className="config-builder">
-      {/* Tabs */}
-      <div className="config-tabs">
-        <button
-          className={`config-tab ${activeTab === "landing" ? "active" : ""}`}
-          onClick={() => setActiveTab("landing")}
-        >
-          Landing Pages
-        </button>
-        <button
-          className={`config-tab ${activeTab === "drafts" ? "active" : ""}`}
-          onClick={() => setActiveTab("drafts")}
-        >
-          Drafts & Approvals
-        </button>
-      </div>
-
       {/* Messages */}
       {message && (
         <div className={`config-message config-message-${message.type}`}>
@@ -226,105 +197,124 @@ export function ConfigBuilderPage({
         </div>
       )}
 
-      {/* Landing Page Editor */}
-      {activeTab === "landing" && (
-        <div className="config-content">
-          {/* Program Selector */}
-          <div className="config-selector">
-            <label>Select Program:</label>
-            <select
-              value={selectedProgram?.id || ""}
-              onChange={(e) => {
-                const program = programs.find((p) => p.id === e.target.value);
-                setSelectedProgram(program || null);
-              }}
-              className="config-select"
-            >
-              {programs.map((program) => (
-                <option key={program.id} value={program.id}>
-                  {program.name}
-                </option>
-              ))}
-            </select>
+      <div className="config-content">
+        {/* Program Selector */}
+        <div className="config-selector">
+          <label>Select Program:</label>
+          <select
+            value={selectedProgram?.id || ""}
+            onChange={(e) => {
+              const program = programs.find((p) => p.id === e.target.value);
+              setSelectedProgram(program || null);
+            }}
+            className="config-select"
+          >
+            {programs.map((program) => (
+              <option key={program.id} value={program.id}>
+                {program.name}
+              </option>
+            ))}
+          </select>
 
-            {isDirty && (
-              <div className="config-actions">
-                <button onClick={saveDraft} disabled={isSaving} className="admin-btn">
-                  {isSaving ? "Saving..." : "Save Draft"}
-                </button>
-                <button
-                  onClick={() => {
-                    if (selectedProgram) loadProgramConfig(selectedProgram.id);
-                  }}
-                  className="admin-btn-ghost"
-                >
-                  Discard Changes
-                </button>
-              </div>
-            )}
-          </div>
+          {isDirty && (
+            <div className="config-actions">
+              <button onClick={saveConfig} disabled={isSaving} className="admin-btn">
+                {isSaving ? "Saving..." : "Save changes"}
+              </button>
+              <button
+                onClick={() => {
+                  if (selectedProgram) loadProgramConfig(selectedProgram.id);
+                }}
+                className="admin-btn-ghost"
+              >
+                Discard Changes
+              </button>
+            </div>
+          )}
+        </div>
 
-          {/* Editor Grid */}
-          {config && (
-            <div className="config-grid">
-              {/* Left: Editors */}
-              <div className="config-editors">
-                <TemplateSelector
-                  value={config.templateType || "full"}
-                  onChange={(templateType) => updateConfig({ templateType })}
-                />
+        {/* Editor Grid */}
+        {config && (
+          <div className="config-grid">
+            {/* Left: Editors */}
+            <div className="config-editors">
+              <TemplateSelector
+                value={config.templateType || "full"}
+                onChange={(templateType) => updateConfig({ templateType })}
+              />
 
-                <HeroSectionEditor
-                  landingCopy={config.landingCopy}
-                  heroImage={config.heroImage}
-                  bgColor={config.heroBackgroundColor}
-                  bgImage={config.heroBackgroundImage}
-                  onChange={updateConfig}
-                />
+              <ThankYouEditor
+                value={config.schoolThankYou}
+                onChange={(schoolThankYou) => updateConfig({ schoolThankYou })}
+              />
 
-                {config.templateType !== "minimal" && (
-                  <>
+              <LeadFormEditor
+                leadForm={config.leadForm}
+                onChange={(leadForm) => updateConfig({ leadForm })}
+              />
+
+              <SectionsPanel
+                sectionsConfig={config.sectionsConfig}
+                onChange={(sectionsConfig) => updateConfig({ sectionsConfig })}
+              />
+
+              <HeroSectionEditor
+                landingCopy={config.landingCopy}
+                heroImage={config.heroImage}
+                bgColor={config.heroBackgroundColor}
+                bgImage={config.heroBackgroundImage}
+                onChange={updateConfig}
+              />
+
+              {config.templateType !== "minimal" && (
+                <>
+                  {config.sectionsConfig?.visible?.highlights !== false && (
                     <HighlightsEditor
                       highlights={config.highlights || []}
                       onChange={(highlights) => updateConfig({ highlights })}
                     />
+                  )}
 
+                  {config.sectionsConfig?.visible?.stats !== false && (
                     <StatsEditor
                       stats={config.stats || {}}
                       onChange={(stats) => updateConfig({ stats })}
                     />
+                  )}
 
+                  {config.sectionsConfig?.visible?.testimonials !== false && (
                     <TestimonialsEditor
                       testimonials={config.testimonials || []}
                       onChange={(testimonials) => updateConfig({ testimonials })}
                     />
+                  )}
 
+                  {config.sectionsConfig?.visible?.faqs !== false && (
                     <FAQsEditor
                       faqs={config.faqs || []}
                       onChange={(faqs) => updateConfig({ faqs })}
                     />
-                  </>
-                )}
-              </div>
-
-              {/* Right: Preview */}
-              <div className="config-preview">
-                <PreviewPanel schoolSlug={schoolSlug} program={selectedProgram} />
-              </div>
+                  )}
+                </>
+              )}
             </div>
-          )}
-        </div>
-      )}
 
-      {/* Drafts Manager */}
-      {activeTab === "drafts" && (
-        <DraftsManager
-          drafts={drafts}
-          onSubmit={submitDraft}
-          onApprove={approveDraft}
-          onReject={rejectDraft}
-        />
-      )}
+            {/* Right: Preview */}
+            <div className="config-preview">
+              <PreviewPanel
+                schoolSlug={schoolSlug}
+                program={selectedProgram}
+                baseUrl={landingPreviewBase}
+              />
+              <PreviewDebugPanel
+                baseUrl={landingPreviewBase}
+                schoolSlug={schoolSlug}
+                programSlug={selectedProgram?.slug}
+              />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -368,6 +358,307 @@ function TemplateSelector({
           </div>
         </label>
       </div>
+    </div>
+  );
+}
+
+function SectionsPanel({
+  sectionsConfig,
+  onChange
+}: {
+  sectionsConfig?: { order: string[]; visible: Record<string, boolean> };
+  onChange: (value: { order: string[]; visible: Record<string, boolean> }) => void;
+}) {
+  const visible = sectionsConfig?.visible || {};
+  const order = sectionsConfig?.order || [...DEFAULT_SECTIONS];
+
+  const toggle = (key: string) => {
+    onChange({
+      order,
+      visible: {
+        ...visible,
+        [key]: visible[key] === false
+      }
+    });
+  };
+
+  return (
+    <div className="config-card">
+      <h3>Section Visibility</h3>
+      <div className="config-toggle-grid">
+        {DEFAULT_SECTIONS.map((key) => (
+          <label key={key} className="config-toggle">
+            <input
+              type="checkbox"
+              checked={visible[key] !== false}
+              onChange={() => toggle(key)}
+            />
+            <span>{key.charAt(0).toUpperCase() + key.slice(1)}</span>
+          </label>
+        ))}
+      </div>
+      <p className="admin-muted">
+        Turn sections on or off for this program. Ordering support comes next.
+      </p>
+    </div>
+  );
+}
+
+function ThankYouEditor({
+  value,
+  onChange
+}: {
+  value?: ThankYouConfig;
+  onChange: (value: ThankYouConfig) => void;
+}) {
+  return (
+    <div className="config-card">
+      <h3>Thank You Message</h3>
+      <div className="config-form">
+        <div className="form-group">
+          <label>Title</label>
+          <input
+            className="form-input"
+            value={value?.title || ""}
+            onChange={(event) => onChange({ ...value, title: event.target.value })}
+            placeholder="Thanks! Your info is on the way."
+          />
+        </div>
+        <div className="form-group">
+          <label>Message</label>
+          <input
+            className="form-input"
+            value={value?.message || ""}
+            onChange={(event) => onChange({ ...value, message: event.target.value })}
+            placeholder="We’ve sent your details to admissions."
+          />
+        </div>
+        <div className="form-group">
+          <label>Body</label>
+          <textarea
+            className="form-textarea"
+            rows={3}
+            value={value?.body || ""}
+            onChange={(event) => onChange({ ...value, body: event.target.value })}
+            placeholder="Expect a response soon. In the meantime, explore program details."
+          />
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>CTA Text</label>
+            <input
+              className="form-input"
+              value={value?.ctaText || ""}
+              onChange={(event) => onChange({ ...value, ctaText: event.target.value })}
+              placeholder="Learn more"
+            />
+          </div>
+          <div className="form-group">
+            <label>CTA Link</label>
+            <input
+              className="form-input"
+              value={value?.ctaUrl || ""}
+              onChange={(event) => onChange({ ...value, ctaUrl: event.target.value })}
+              placeholder="https://example.com"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeadFormEditor({
+  leadForm,
+  onChange
+}: {
+  leadForm?: LeadFormConfig;
+  onChange: (value: LeadFormConfig) => void;
+}) {
+  const fields = Array.isArray(leadForm?.fields) ? leadForm?.fields || [] : [];
+
+  const updateField = (index: number, updates: Partial<LeadFormField>) => {
+    const next = [...fields];
+    next[index] = { ...next[index], ...updates };
+    onChange({ ...leadForm, fields: next });
+  };
+
+  const addField = () => {
+    const nextId = `field_${fields.length + 1}`;
+    onChange({
+      ...leadForm,
+      fields: [
+        ...fields,
+        {
+          id: nextId,
+          label: "New field",
+          type: "text",
+          required: false,
+          mapTo: "answers"
+        }
+      ]
+    });
+  };
+
+  const removeField = (index: number) => {
+    const next = fields.filter((_, i) => i !== index);
+    onChange({ ...leadForm, fields: next });
+  };
+
+  const updateOption = (fieldIndex: number, optionIndex: number, updates: Partial<{ label: string; value: string }>) => {
+    const field = fields[fieldIndex];
+    const options = [...(field.options || [])];
+    options[optionIndex] = { ...options[optionIndex], ...updates };
+    updateField(fieldIndex, { options });
+  };
+
+  const addOption = (fieldIndex: number) => {
+    const field = fields[fieldIndex];
+    const options = [...(field.options || []), { label: "Option", value: "option" }];
+    updateField(fieldIndex, { options });
+  };
+
+  const removeOption = (fieldIndex: number, optionIndex: number) => {
+    const field = fields[fieldIndex];
+    const options = (field.options || []).filter((_, i) => i !== optionIndex);
+    updateField(fieldIndex, { options });
+  };
+
+  return (
+    <div className="config-card">
+      <h3>Lead Form</h3>
+      <p className="admin-muted">
+        Core fields are always included: first name, last name, email, phone, and consent.
+      </p>
+
+      <div className="form-grid">
+        <div className="form-group">
+          <label>Consent Checkbox Label</label>
+          <input
+            className="form-input"
+            type="text"
+            value={leadForm?.consentLabel || ""}
+            onChange={(event) => onChange({ ...leadForm, consentLabel: event.target.value })}
+            placeholder="I agree to receive calls, texts, or emails about program info."
+          />
+        </div>
+      </div>
+
+      <div className="lead-form-fields">
+        {fields.map((field, index) => {
+          const supportsOptions = field.type === "select" || field.type === "radio" || field.type === "checkbox";
+          const options = Array.isArray(field.options) ? field.options : [];
+          return (
+            <div key={`${field.id}-${index}`} className="lead-form-field">
+              <div className="lead-form-row">
+                <div className="form-group">
+                  <label>Field Label</label>
+                  <input
+                    className="form-input"
+                    value={field.label}
+                    onChange={(event) => updateField(index, { label: event.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Field ID</label>
+                  <input
+                    className="form-input"
+                    value={field.id}
+                    onChange={(event) => updateField(index, { id: event.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="lead-form-row">
+                <div className="form-group">
+                  <label>Type</label>
+                  <select
+                    className="form-input"
+                    value={field.type}
+                    onChange={(event) => updateField(index, { type: event.target.value as LeadFormField["type"] })}
+                  >
+                    <option value="text">Text</option>
+                    <option value="email">Email</option>
+                    <option value="tel">Phone</option>
+                    <option value="textarea">Textarea</option>
+                    <option value="select">Select</option>
+                    <option value="radio">Radio</option>
+                    <option value="checkbox">Checkbox</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Map To</label>
+                  <select
+                    className="form-input"
+                    value={field.mapTo || "answers"}
+                    onChange={(event) => updateField(index, { mapTo: event.target.value as "answers" | "campus_id" })}
+                  >
+                    <option value="answers">Extra answers (JSON)</option>
+                    <option value="campus_id">Campus ID</option>
+                  </select>
+                </div>
+                <div className="form-group form-inline">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={field.required === true}
+                      onChange={(event) => updateField(index, { required: event.target.checked })}
+                    />
+                    Required
+                  </label>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Placeholder</label>
+                <input
+                  className="form-input"
+                  value={field.placeholder || ""}
+                  onChange={(event) => updateField(index, { placeholder: event.target.value })}
+                />
+              </div>
+
+              {supportsOptions && (
+                <div className="lead-form-options">
+                  <label className="admin-muted">Options</label>
+                  {options.map((option, optionIndex) => (
+                    <div key={`${field.id}-option-${optionIndex}`} className="config-list-item">
+                      <input
+                        className="form-input-sm"
+                        value={option.label}
+                        onChange={(event) => updateOption(index, optionIndex, { label: event.target.value })}
+                        placeholder="Label"
+                      />
+                      <input
+                        className="form-input-sm"
+                        value={option.value}
+                        onChange={(event) => updateOption(index, optionIndex, { value: event.target.value })}
+                        placeholder="Value"
+                      />
+                      <button className="btn-remove" onClick={() => removeOption(index, optionIndex)}>
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button className="admin-btn-ghost" onClick={() => addOption(index)}>
+                    + Add Option
+                  </button>
+                </div>
+              )}
+
+              <div className="lead-form-actions">
+                <button className="admin-btn-ghost" onClick={() => removeField(index)}>
+                  Remove Field
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <button className="admin-btn-ghost" onClick={addField}>
+        + Add Field
+      </button>
     </div>
   );
 }
@@ -487,6 +778,29 @@ function HeroSectionEditor({
             />
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PreviewDebugPanel({
+  baseUrl,
+  schoolSlug,
+  programSlug
+}: {
+  baseUrl: string;
+  schoolSlug: string;
+  programSlug?: string;
+}) {
+  const url = baseUrl && programSlug ? `${baseUrl}/${programSlug}` : "";
+  return (
+    <div className="config-card preview-debug">
+      <h3>Preview Debug</h3>
+      <div className="admin-muted">
+        <div>Base URL: {baseUrl || "(missing NEXT_PUBLIC_LANDING_BASE_URL)"}</div>
+        <div>School Slug: {schoolSlug}</div>
+        <div>Program Slug: {programSlug || "(none selected)"}</div>
+        <div>Preview URL: {url || "(incomplete)"}</div>
       </div>
     </div>
   );
@@ -755,7 +1069,15 @@ function FAQsEditor({
 }
 
 // Preview Panel Component
-function PreviewPanel({ schoolSlug, program }: { schoolSlug: string; program: Program | null }) {
+function PreviewPanel({
+  schoolSlug,
+  program,
+  baseUrl
+}: {
+  schoolSlug: string;
+  program: Program | null;
+  baseUrl: string;
+}) {
   if (!program) {
     return (
       <div className="preview-empty">
@@ -763,6 +1085,16 @@ function PreviewPanel({ schoolSlug, program }: { schoolSlug: string; program: Pr
       </div>
     );
   }
+
+  if (!baseUrl) {
+    return (
+      <div className="preview-empty">
+        <p>Set NEXT_PUBLIC_LANDING_BASE_URL to enable live preview.</p>
+      </div>
+    );
+  }
+
+  const normalizedBase = baseUrl.replace(/\/$/, "");
 
   return (
     <div className="preview-container">
@@ -782,87 +1114,11 @@ function PreviewPanel({ schoolSlug, program }: { schoolSlug: string; program: Pr
       </div>
       <div className="preview-frame">
         <iframe
-          src={`/${schoolSlug}?preview=${program.slug}`}
+          src={`${normalizedBase}/${program.slug}`}
           title="Landing Page Preview"
           className="preview-iframe"
         />
       </div>
-    </div>
-  );
-}
-
-// Drafts Manager Component
-function DraftsManager({
-  drafts,
-  onSubmit,
-  onApprove,
-  onReject
-}: {
-  drafts: Draft[];
-  onSubmit: (id: string) => void;
-  onApprove: (id: string) => void;
-  onReject: (id: string) => void;
-}) {
-  const getStatusBadge = (status: string) => {
-    const badges: Record<string, string> = {
-      draft: "🟡 Draft",
-      pending_approval: "🔵 Pending Approval",
-      approved: "🟢 Approved",
-      rejected: "🔴 Rejected"
-    };
-    return badges[status] || status;
-  };
-
-  return (
-    <div className="drafts-container">
-      <h2>Drafts & Approvals</h2>
-
-      {drafts.length === 0 ? (
-        <div className="config-card">
-          <p className="admin-muted">No drafts found</p>
-        </div>
-      ) : (
-        <div className="drafts-list">
-          {drafts.map((draft) => (
-            <div key={draft.id} className="draft-card">
-              <div className="draft-header">
-                <div>
-                  <h4>{draft.entityName || draft.entityType}</h4>
-                  <p className="admin-muted">
-                    Created by {draft.creatorEmail} on{" "}
-                    {new Date(draft.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <div className="draft-status">{getStatusBadge(draft.status)}</div>
-              </div>
-
-              {draft.rejectionReason && (
-                <div className="draft-rejection">
-                  <strong>Rejection reason:</strong> {draft.rejectionReason}
-                </div>
-              )}
-
-              <div className="draft-actions">
-                {draft.status === "draft" && (
-                  <button onClick={() => onSubmit(draft.id)} className="admin-btn">
-                    Submit for Approval
-                  </button>
-                )}
-                {draft.status === "pending_approval" && (
-                  <>
-                    <button onClick={() => onApprove(draft.id)} className="admin-btn">
-                      Approve
-                    </button>
-                    <button onClick={() => onReject(draft.id)} className="admin-btn-ghost">
-                      Reject
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

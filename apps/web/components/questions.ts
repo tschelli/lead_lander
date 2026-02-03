@@ -5,7 +5,7 @@ export type QuestionOption = {
 
 export type Question = {
   id: string;
-  type: "radio" | "checkbox" | "select" | "text" | "textarea" | "slider";
+  type: "radio" | "checkbox" | "select" | "text" | "email" | "tel" | "textarea" | "slider";
   label: string;
   options?: QuestionOption[];
   required?: boolean;

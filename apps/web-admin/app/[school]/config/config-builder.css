@@ -113,6 +113,64 @@
   color: rgba(15, 23, 42, 0.9);
 }
 
+.config-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.config-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.04);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.lead-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.lead-form-field {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 10px;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.02);
+}
+
+.lead-form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.lead-form-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.lead-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.form-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 22px;
+}
+
 /* Template Selector */
 .template-selector {
   display: grid;

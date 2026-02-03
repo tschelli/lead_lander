@@ -49,6 +49,14 @@ export const FooterContentSchema = z.object({
     .optional()
 });
 
+export const ThankYouSchema = z.object({
+  title: z.string().optional(),
+  message: z.string().optional(),
+  body: z.string().optional(),
+  ctaText: z.string().optional(),
+  ctaUrl: z.string().optional()
+});
+
 export const SchoolSchema = z.object({
   id: z.string().min(1),
   clientId: z.string().min(1),
@@ -57,7 +65,8 @@ export const SchoolSchema = z.object({
   branding: BrandingSchema,
   compliance: ComplianceSchema,
   crmConnectionId: z.string().min(1),
-  footerContent: FooterContentSchema.optional()
+  footerContent: FooterContentSchema.optional(),
+  thankYou: ThankYouSchema.optional()
 });
 
 export const CampusSchema = z.object({
@@ -146,6 +155,28 @@ export const QuestionOverrideSchema = z.object({
     .optional()
 });
 
+export const LeadFormFieldSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  type: z.enum(["text", "email", "tel", "select", "radio", "checkbox", "textarea"]),
+  required: z.boolean().default(false),
+  options: z
+    .array(
+      z.object({
+        label: z.string(),
+        value: z.string()
+      })
+    )
+    .optional(),
+  mapTo: z.enum(["answers", "campus_id"]).default("answers"),
+  placeholder: z.string().optional()
+});
+
+export const LeadFormConfigSchema = z.object({
+  fields: z.array(LeadFormFieldSchema).default([]),
+  consentLabel: z.string().optional()
+});
+
 export const ProgramSchema = z.object({
   id: z.string().min(1),
   schoolId: z.string().min(1),
@@ -154,6 +185,7 @@ export const ProgramSchema = z.object({
   availableCampuses: z.array(z.string()).optional(),
   landingCopy: LandingCopySchema,
   questionOverrides: z.array(QuestionOverrideSchema).optional(),
+  leadForm: LeadFormConfigSchema.optional(),
   // Enhanced landing page fields
   templateType: z.enum(["minimal", "full"]).default("full"),
   heroImage: z.string().optional(),
@@ -257,8 +289,11 @@ export type ProgramTestimonial = z.infer<typeof ProgramTestimonialSchema>;
 export type ProgramFAQ = z.infer<typeof ProgramFAQSchema>;
 export type ProgramStats = z.infer<typeof ProgramStatsSchema>;
 export type SectionsConfig = z.infer<typeof SectionsConfigSchema>;
+export type LeadFormField = z.infer<typeof LeadFormFieldSchema>;
+export type LeadFormConfig = z.infer<typeof LeadFormConfigSchema>;
 
 // Quiz builder types
 export type QuizQuestion = z.infer<typeof QuizQuestionSchema>;
 export type QuizAnswerOption = z.infer<typeof QuizAnswerOptionSchema>;
 export type FooterContent = z.infer<typeof FooterContentSchema>;
+export type ThankYou = z.infer<typeof ThankYouSchema>;

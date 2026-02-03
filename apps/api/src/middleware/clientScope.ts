@@ -32,6 +32,25 @@ export async function requireSchoolAccess(
   }
 
   try {
+    const isSuper = auth.roles.some((role) => role.role === "super_admin");
+    if (isSuper) {
+      const result = await pool.query(
+        `SELECT id, client_id, slug, name
+         FROM schools
+         WHERE id = $1 OR slug = $1
+         LIMIT 1`,
+        [schoolId]
+      );
+      const school = result.rows[0];
+      if (!school) {
+        res.status(404).json({ error: "School not found" });
+        return;
+      }
+      res.locals.school = school;
+      next();
+      return;
+    }
+
     if (!auth.user.clientId) {
       res.status(403).json({ error: "Forbidden: No client access" });
       return;

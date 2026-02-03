@@ -29,10 +29,16 @@ export function createConfigStore(pool: Pool) {
           clientId: row.client_id,
           slug: row.slug,
           name: row.name,
-          branding: row.branding,
+          branding: row.branding
+            ? {
+                ...row.branding,
+                logoUrl: row.branding.logoUrl ?? undefined
+              }
+            : row.branding,
           compliance: row.compliance,
           crmConnectionId: row.crm_connection_id,
-          footerContent: row.footer_content || undefined
+          footerContent: row.footer_content || undefined,
+          thankYou: row.thank_you || undefined
         })),
         campuses: campuses.rows.map((row) => ({
           id: row.id,
@@ -48,6 +54,7 @@ export function createConfigStore(pool: Pool) {
           slug: row.slug,
           name: row.name,
           landingCopy: row.landing_copy,
+          leadForm: row.lead_form_config || undefined,
           questionOverrides: row.question_overrides || undefined,
           availableCampuses: row.available_campuses || undefined,
           templateType: row.template_type || "full",

@@ -57,9 +57,16 @@ export function createConfigStore(pool: Pool): ConfigStore {
           clientId: row.client_id,
           slug: row.slug,
           name: row.name,
-          branding: row.branding,
+          branding: row.branding
+            ? {
+                ...row.branding,
+                logoUrl: row.branding.logoUrl ?? undefined
+              }
+            : row.branding,
           compliance: row.compliance,
-          crmConnectionId: row.crm_connection_id
+          crmConnectionId: row.crm_connection_id,
+          footerContent: row.footer_content || undefined,
+          thankYou: row.thank_you || undefined
         })),
         campuses: campuses.rows.map((row) => ({
           id: row.id,
@@ -75,6 +82,7 @@ export function createConfigStore(pool: Pool): ConfigStore {
           slug: row.slug,
           name: row.name,
           landingCopy: row.landing_copy,
+          leadForm: row.lead_form_config || undefined,
           questionOverrides: row.question_overrides || undefined,
           availableCampuses: row.available_campuses || undefined,
           templateType: row.template_type || "full",
@@ -189,14 +197,15 @@ export function createConfigStore(pool: Pool): ConfigStore {
 
         await client.query(
           `UPDATE schools
-           SET slug = $1, name = $2, branding = $3, compliance = $4, crm_connection_id = $5, updated_at = $6
-           WHERE id = $7 AND client_id = $8`,
+           SET slug = $1, name = $2, branding = $3, compliance = $4, crm_connection_id = $5, thank_you = $6, updated_at = $7
+           WHERE id = $8 AND client_id = $9`,
           [
             school.slug,
             school.name,
             school.branding,
             school.compliance,
             school.crmConnectionId,
+            school.thankYou || null,
             new Date(),
             schoolId,
             clientId
@@ -209,30 +218,31 @@ export function createConfigStore(pool: Pool): ConfigStore {
 
         for (const program of programs) {
           await client.query(
-            `INSERT INTO programs (id, client_id, school_id, slug, name, landing_copy, question_overrides, available_campuses, template_type, hero_image, hero_background_color, hero_background_image, duration, salary_range, placement_rate, graduation_rate, highlights, testimonials, faqs, stats, sections_config, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $22)
-             ON CONFLICT (id) DO UPDATE SET
-               client_id = EXCLUDED.client_id,
-               school_id = EXCLUDED.school_id,
-               slug = EXCLUDED.slug,
-               name = EXCLUDED.name,
-               landing_copy = EXCLUDED.landing_copy,
-               question_overrides = EXCLUDED.question_overrides,
-               available_campuses = EXCLUDED.available_campuses,
-               template_type = EXCLUDED.template_type,
-               hero_image = EXCLUDED.hero_image,
-               hero_background_color = EXCLUDED.hero_background_color,
-               hero_background_image = EXCLUDED.hero_background_image,
-               duration = EXCLUDED.duration,
-               salary_range = EXCLUDED.salary_range,
-               placement_rate = EXCLUDED.placement_rate,
-               graduation_rate = EXCLUDED.graduation_rate,
-               highlights = EXCLUDED.highlights,
-               testimonials = EXCLUDED.testimonials,
-               faqs = EXCLUDED.faqs,
-               stats = EXCLUDED.stats,
-               sections_config = EXCLUDED.sections_config,
-               updated_at = EXCLUDED.updated_at`,
+          `INSERT INTO programs (id, client_id, school_id, slug, name, landing_copy, lead_form_config, question_overrides, available_campuses, template_type, hero_image, hero_background_color, hero_background_image, duration, salary_range, placement_rate, graduation_rate, highlights, testimonials, faqs, stats, sections_config, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $23)
+           ON CONFLICT (id) DO UPDATE SET
+           client_id = EXCLUDED.client_id,
+           school_id = EXCLUDED.school_id,
+           slug = EXCLUDED.slug,
+           name = EXCLUDED.name,
+           landing_copy = EXCLUDED.landing_copy,
+           lead_form_config = EXCLUDED.lead_form_config,
+           question_overrides = EXCLUDED.question_overrides,
+           available_campuses = EXCLUDED.available_campuses,
+           template_type = EXCLUDED.template_type,
+           hero_image = EXCLUDED.hero_image,
+           hero_background_color = EXCLUDED.hero_background_color,
+           hero_background_image = EXCLUDED.hero_background_image,
+           duration = EXCLUDED.duration,
+           salary_range = EXCLUDED.salary_range,
+           placement_rate = EXCLUDED.placement_rate,
+           graduation_rate = EXCLUDED.graduation_rate,
+           highlights = EXCLUDED.highlights,
+           testimonials = EXCLUDED.testimonials,
+           faqs = EXCLUDED.faqs,
+           stats = EXCLUDED.stats,
+           sections_config = EXCLUDED.sections_config,
+           updated_at = EXCLUDED.updated_at`,
             [
               program.id,
               clientId,
@@ -240,6 +250,7 @@ export function createConfigStore(pool: Pool): ConfigStore {
               program.slug,
               program.name,
               program.landingCopy,
+              program.leadForm || null,
               program.questionOverrides || null,
               program.availableCampuses || null,
               program.templateType || "full",

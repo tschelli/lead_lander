@@ -12,12 +12,31 @@ export type QuestionOverride = {
   showIf?: { questionId: string; equals: string | string[] };
 };
 
+type LeadFormField = {
+  id: string;
+  label: string;
+  type: "text" | "email" | "tel" | "select" | "radio" | "checkbox" | "textarea";
+  required?: boolean;
+  options?: QuestionOption[];
+  mapTo?: "answers" | "campus_id";
+  placeholder?: string;
+};
+
 type FormEngineProps = {
   schoolId: string;
   programId: string;
   consentText: string;
   consentVersion: string;
   questionOverrides?: QuestionOverride[];
+  leadFormFields?: LeadFormField[];
+  consentLabel?: string;
+  thankYou?: {
+    title?: string;
+    message?: string;
+    body?: string;
+    ctaText?: string;
+    ctaUrl?: string;
+  };
   programOptions?: QuestionOption[];
   campusOptions?: QuestionOption[];
   initialAnswers?: Record<string, unknown>;
@@ -62,11 +81,6 @@ const defaultContact: ContactInfo = {
   email: "",
   phone: ""
 };
-
-const INITIAL_QUESTION_ID_SET = new Set([
-  "program_interest",
-  "campus_selection"
-]);
 
 function applyOverrides(questions: Question[], overrides?: QuestionOverride[]) {
   if (!overrides || overrides.length === 0) return questions;
@@ -124,6 +138,9 @@ export function FormEngine({
   consentText,
   consentVersion,
   questionOverrides,
+  leadFormFields,
+  consentLabel,
+  thankYou,
   programOptions,
   campusOptions,
   initialAnswers,
@@ -198,21 +215,36 @@ export function FormEngine({
     return merged.length > 0 ? merged : undefined;
   }, [campusOptions, programOptions, questionOverrides]);
 
-  const questions = useMemo(
-    () => applyOverrides(DEFAULT_QUESTIONS, mergedOverrides),
-    [mergedOverrides]
-  );
-  const visibleQuestions = useMemo(
-    () => questions.filter((question) => isQuestionVisible(question, answers)),
-    [questions, answers]
-  );
-  const initialQuestions = useMemo(
-    () => visibleQuestions.filter((question) => INITIAL_QUESTION_ID_SET.has(question.id)),
-    [visibleQuestions]
-  );
-  const remainingQuestions = useMemo(
-    () => visibleQuestions.filter((question) => !INITIAL_QUESTION_ID_SET.has(question.id)),
-    [visibleQuestions]
+  const leadQuestions = useMemo(() => {
+    if (leadFormFields !== undefined) {
+      const fields = leadFormFields || [];
+      return fields.map((field) => {
+        const options =
+          field.mapTo === "campus_id" && (!field.options || field.options.length === 0)
+            ? campusOptions
+            : field.options;
+        return {
+          id: field.id,
+          type: field.type,
+          label: field.label,
+          required: field.required,
+          options,
+          placeholder: field.placeholder,
+          mapTo: field.mapTo || "answers"
+        } as Question & { mapTo?: "answers" | "campus_id"; placeholder?: string };
+      });
+    }
+
+    const questions = applyOverrides(DEFAULT_QUESTIONS, mergedOverrides);
+    return questions.map((question) => ({
+      ...question,
+      mapTo: question.id === "campus_selection" ? "campus_id" : "answers"
+    })) as Array<Question & { mapTo?: "answers" | "campus_id" }>;
+  }, [leadFormFields, mergedOverrides, campusOptions]);
+
+  const visibleLeadQuestions = useMemo(
+    () => leadQuestions.filter((question) => isQuestionVisible(question, answers)),
+    [leadQuestions, answers]
   );
 
   // Visible quiz questions based on conditional logic
@@ -221,8 +253,8 @@ export function FormEngine({
     [quizQuestions, quizAnswers]
   );
 
-  // Calculate total steps: 1 (contact) + quiz questions + remaining standard questions
-  const totalSteps = 1 + (enableQuiz ? visibleQuizQuestions.length : 0) + remainingQuestions.length;
+  // Calculate total steps: 1 (contact) + quiz questions
+  const totalSteps = 1 + (enableQuiz ? visibleQuizQuestions.length : 0);
   const isStartStep = currentStep === 0;
   const quizStepsStart = 1;
   const quizStepsEnd = quizStepsStart + visibleQuizQuestions.length;
@@ -230,9 +262,6 @@ export function FormEngine({
   const isLastStep = currentStep === totalSteps - 1;
 
   const currentQuizQuestion = isInQuizStep ? visibleQuizQuestions[currentStep - quizStepsStart] : null;
-  const currentStandardQuestion = !isStartStep && !isInQuizStep
-    ? remainingQuestions[currentStep - quizStepsEnd]
-    : null;
 
   useEffect(() => {
     if (currentStep >= totalSteps) {
@@ -264,8 +293,11 @@ export function FormEngine({
       if (!response.ok) throw new Error("Failed to calculate recommendation");
 
       const data = await response.json();
-      setRecommendedProgram(data.recommendedProgram || null);
-      setQuizScores(data.quizScore || {});
+      const recommended = data.recommendedProgram || null;
+      const scores = data.quizScore || {};
+      setRecommendedProgram(recommended);
+      setQuizScores(scores);
+      return { recommendedProgram: recommended, quizScore: scores };
     } catch (error) {
       console.error("Recommendation error:", error);
     }
@@ -297,6 +329,25 @@ export function FormEngine({
             type="text"
             value={(answers[question.id] as string) || ""}
             onChange={(event) => updateAnswer(question.id, event.target.value)}
+            placeholder={(question as { placeholder?: string }).placeholder || undefined}
+          />
+        )}
+        {question.type === "email" && (
+          <input
+            className="field-input"
+            type="email"
+            value={(answers[question.id] as string) || ""}
+            onChange={(event) => updateAnswer(question.id, event.target.value)}
+            placeholder={(question as { placeholder?: string }).placeholder || undefined}
+          />
+        )}
+        {question.type === "tel" && (
+          <input
+            className="field-input"
+            type="tel"
+            value={(answers[question.id] as string) || ""}
+            onChange={(event) => updateAnswer(question.id, event.target.value)}
+            placeholder={(question as { placeholder?: string }).placeholder || undefined}
           />
         )}
         {question.type === "slider" && (
@@ -314,6 +365,7 @@ export function FormEngine({
             className="field-input"
             value={(answers[question.id] as string) || ""}
             onChange={(event) => updateAnswer(question.id, event.target.value)}
+            placeholder={(question as { placeholder?: string }).placeholder || undefined}
           />
         )}
         {question.type === "select" && (
@@ -439,7 +491,7 @@ export function FormEngine({
         return;
       }
 
-      for (const question of initialQuestions) {
+      for (const question of visibleLeadQuestions) {
         if (question.required && isAnswerMissing(question)) {
           setError("Please answer all required questions to continue.");
           return;
@@ -450,14 +502,19 @@ export function FormEngine({
       try {
         const baseUrl = apiBaseUrl || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
         const payloadAnswers: Record<string, unknown> = {};
-        for (const question of initialQuestions) {
+        let campusId: string | null = null;
+        for (const question of visibleLeadQuestions) {
           if (answers[question.id] !== undefined) {
             payloadAnswers[question.id] = answers[question.id];
           }
+          const mapTo = (question as { mapTo?: "answers" | "campus_id" }).mapTo;
+          if (mapTo === "campus_id") {
+            const selected = answers[question.id] as string | undefined;
+            if (selected && selected !== "not_sure") {
+              campusId = selected;
+            }
+          }
         }
-
-        const selectedCampus = answers.campus_selection as string | undefined;
-        const campusId = selectedCampus && selectedCampus !== "not_sure" ? selectedCampus : null;
 
         const payload = {
           firstName: contact.firstName,
@@ -497,8 +554,8 @@ export function FormEngine({
           setSubmissionId(data.submissionId);
         }
 
-        // If no quiz and no remaining questions, we're done
-        if (!enableQuiz && remainingQuestions.length === 0) {
+        // If no quiz, we're done
+        if (!enableQuiz) {
           setSubmitted(true);
           return;
         }
@@ -547,13 +604,35 @@ export function FormEngine({
           throw new Error(message || "Submission failed");
         }
 
-        // If this was the last quiz question, calculate recommendation
+        let recommendation: { recommendedProgram: QuizProgram | null; quizScore: Record<string, number> } | undefined;
         if (currentStep === quizStepsEnd - 1) {
-          await calculateRecommendation();
+          recommendation = await calculateRecommendation();
         }
 
-        // Move to next step or finish
         if (isLastStep) {
+          if (submissionId) {
+            const finalAnswers: Record<string, unknown> = {
+              quiz_completed: true,
+              quiz_answers: quizAnswers,
+              quiz_scores: recommendation?.quizScore || quizScores
+            };
+            const recommended = recommendation?.recommendedProgram || recommendedProgram;
+            if (recommended) {
+              finalAnswers.recommended_program = recommended.id;
+              finalAnswers.recommended_program_name = recommended.name;
+            }
+
+            await fetch(`${baseUrl}/api/lead/step`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                submissionId,
+                stepIndex: currentStep + 1,
+                answers: finalAnswers
+              })
+            });
+          }
+
           setSubmitted(true);
         } else {
           setCurrentStep((prev) => Math.min(prev + 1, totalSteps - 1));
@@ -567,76 +646,30 @@ export function FormEngine({
       return;
     }
 
-    // Standard question steps: Update CRM lead with answer
-    if (currentStandardQuestion?.required && isAnswerMissing(currentStandardQuestion)) {
-      setError("Please answer this question to continue.");
-      return;
-    }
-
-    if (!submissionId) {
-      setError("Missing submission id. Please restart.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      const baseUrl = apiBaseUrl || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
-
-      // Include quiz results and recommendation on final step
-      const finalAnswers = currentStandardQuestion
-        ? { [currentStandardQuestion.id]: answers[currentStandardQuestion.id] }
-        : {};
-
-      if (isLastStep && enableQuiz) {
-        finalAnswers.quiz_completed = true;
-        finalAnswers.quiz_answers = quizAnswers;
-        finalAnswers.quiz_scores = quizScores;
-        if (recommendedProgram) {
-          finalAnswers.recommended_program = recommendedProgram.id;
-          finalAnswers.recommended_program_name = recommendedProgram.name;
-        }
-      }
-
-      const payload = {
-        submissionId,
-        stepIndex: currentStep + 1,
-        answers: finalAnswers
-      };
-
-      const response = await fetch(`${baseUrl}/api/lead/step`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Submission failed");
-      }
-
-      if (isLastStep) {
-        setSubmitted(true);
-      } else {
-        setCurrentStep((prev) => Math.min(prev + 1, totalSteps - 1));
-      }
-    } catch (submitError) {
-      setError((submitError as Error).message);
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   if (submitted) {
     return (
       <div className="form-card">
         <span className="badge">Submission received</span>
-        <h2>Thanks! Your info is on the way.</h2>
+        <h2>{thankYou?.title || "Thanks! Your info is on the way."}</h2>
         {enableQuiz && recommendedProgram && (
           <p>
             <strong>Recommended Program:</strong> {recommendedProgram.name}
           </p>
         )}
-        <p>We have sent your details to admissions. Expect a response soon.</p>
+        {thankYou?.message && <p>{thankYou.message}</p>}
+        {thankYou?.body && <p>{thankYou.body}</p>}
+        {!thankYou?.message && !thankYou?.body && (
+          <p>We have sent your details to admissions. Expect a response soon.</p>
+        )}
+        {thankYou?.ctaText && thankYou?.ctaUrl && (
+          <p>
+            <a className="primary" href={thankYou.ctaUrl}>
+              {thankYou.ctaText}
+            </a>
+          </p>
+        )}
       </div>
     );
   }
@@ -709,7 +742,7 @@ export function FormEngine({
             </div>
           </div>
           <div className="field-stack">
-            {initialQuestions.map((question) => renderQuestion(question))}
+            {visibleLeadQuestions.map((question) => renderQuestion(question))}
           </div>
           <p className="disclaimer">{consentText}</p>
           <label className="consent-line">
@@ -718,17 +751,13 @@ export function FormEngine({
               checked={consentChecked}
               onChange={(event) => setConsentChecked(event.target.checked)}
             />
-            <span>I agree to receive calls, texts, or emails about program info.</span>
+            <span>{consentLabel || "I agree to receive calls, texts, or emails about program info."}</span>
           </label>
         </div>
       )}
 
       {currentQuizQuestion && isInQuizStep && (
         <div className="form-step">{renderQuizQuestion(currentQuizQuestion)}</div>
-      )}
-
-      {currentStandardQuestion && !isStartStep && !isInQuizStep && (
-        <div className="form-step">{renderQuestion(currentStandardQuestion)}</div>
       )}
 
       <div className="actions">
