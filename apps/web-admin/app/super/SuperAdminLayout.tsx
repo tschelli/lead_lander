@@ -472,11 +472,18 @@ function EntityDetailPanel({
   };
 
   useEffect(() => {
+    // Clear detail immediately when entity changes
+    setDetail(null);
+    setLoading(true);
+    setMessage(null);
+    setValidationErrors({});
+
     const fetchDetail = async () => {
-      if (!entityDetails) return;
-      setLoading(true);
-      setMessage(null);
-      setValidationErrors({});
+      if (!entityDetails) {
+        setLoading(false);
+        return;
+      }
+
       try {
         let url = "";
         if (entity.type === "client") {
@@ -520,13 +527,14 @@ function EntityDetailPanel({
       } catch (error) {
         console.error(error);
         setMessage({ type: "error", text: "Failed to load details" });
+        setDetail(null);
       } finally {
         setLoading(false);
       }
     };
 
     fetchDetail();
-  }, [entityDetails?.id, entityDetails?.clientId, entityDetails?.schoolId, entity.type]);
+  }, [entity.type, entity.id]);
 
   const schoolContext =
     entity.type === "school"
