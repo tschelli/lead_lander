@@ -746,12 +746,20 @@ app.get("/api/public/school/:schoolId/landing/:programSlug", async (req, res) =>
     const campuses = config.campuses.filter((item) => item.schoolId === schoolId);
     const programs = config.programs.filter((item) => item.schoolId === schoolId);
 
+    // Extract landingCopy from program (required by landing page)
+    const landingCopy = program.landingCopy || {
+      headline: program.name,
+      subheadline: `Learn more about ${program.name}`,
+      body: `Start your career with our ${program.name} program.`,
+      ctaText: "Get Started"
+    };
+
     return res.json({
       landing: {
         school: schoolConfig,
         program,
-        campuses,
-        programs
+        landingCopy,
+        questionOverrides: program.questionOverrides
       },
       campuses,
       programs
