@@ -70,27 +70,10 @@ export default async function LandingPage({
 }: {
   params: { program: string };
 }) {
-  // TODO: Update API endpoint in Task #7 to accept schoolId instead of schoolSlug
-  // For now, fetch school info first to get slug, then use existing endpoint
-  const schoolResponse = await fetch(`${API_BASE_URL}/api/public/schools/${SCHOOL_ID}`, {
-    cache: "no-store"
-  });
-
-  if (!schoolResponse.ok) {
-    return (
-      <main>
-        <div className="form-card">
-          <h2>School not found</h2>
-          <p>Configuration error. Please contact support.</p>
-        </div>
-      </main>
-    );
-  }
-
-  const schoolData = (await schoolResponse.json()) as { school: { slug: string } };
-
+  // Use school ID from environment (one deployment per school)
+  // Program slug from URL determines which program to show
   const response = await fetch(
-    `${API_BASE_URL}/api/public/landing/${schoolData.school.slug}/${params.program}`,
+    `${API_BASE_URL}/api/public/school/${SCHOOL_ID}/landing/${params.program}`,
     { cache: "no-store" }
   );
 
@@ -100,6 +83,9 @@ export default async function LandingPage({
         <div className="form-card">
           <h2>Landing page not found</h2>
           <p>Check the URL or configuration.</p>
+          <p style={{ fontSize: "12px", color: "#666", marginTop: "16px" }}>
+            School ID: {SCHOOL_ID} | Program: {params.program}
+          </p>
         </div>
       </main>
     );

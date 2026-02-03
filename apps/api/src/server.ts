@@ -667,6 +667,31 @@ app.get("/api/public/schools/:school", async (req, res) => {
   }
 });
 
+// Get programs for a school (public endpoint)
+app.get("/api/public/schools/:schoolId/programs", async (req, res) => {
+  try {
+    const schoolId = req.params.schoolId;
+    const school = await getSchoolById(schoolId);
+    if (!school) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const config = await getConfigForClient(school.client_id);
+    const programs = config.programs
+      .filter((p) => p.schoolId === schoolId)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        slug: p.slug
+      }));
+
+    return res.json({ programs });
+  } catch (error) {
+    console.error("Public programs fetch error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.get("/api/public/landing/:school/:program", async (req, res) => {
   try {
     const schoolParam = req.params.school;
