@@ -119,7 +119,7 @@ export function SuperAdminQuizPage({ schoolId }: SuperAdminQuizPageProps) {
             <>
               {activeTab === "categories" && (
                 <CategoryManager
-                  clientId={clientId}
+                  schoolId={schoolId}
                   categories={categories}
                   onRefresh={loadData}
                   onMessage={showMessage}
@@ -127,7 +127,7 @@ export function SuperAdminQuizPage({ schoolId }: SuperAdminQuizPageProps) {
               )}
               {activeTab === "stages" && (
                 <StageManager
-                  clientId={clientId}
+                  schoolId={schoolId}
                   categories={categories}
                   stages={stages}
                   onRefresh={loadData}
@@ -145,12 +145,12 @@ export function SuperAdminQuizPage({ schoolId }: SuperAdminQuizPageProps) {
 
 // Category Manager Component
 function CategoryManager({
-  clientId,
+  schoolId,
   categories,
   onRefresh,
   onMessage
 }: {
-  clientId: string;
+  schoolId: string;
   categories: ProgramCategory[];
   onRefresh: () => void;
   onMessage: (type: "success" | "error", text: string) => void;
@@ -348,14 +348,14 @@ function CategoryManager({
 
 // Stage Manager Component
 function StageManager({
-  clientId,
+  schoolId,
   categories,
   stages,
   onRefresh,
   onMessage,
   onEditQuestions
 }: {
-  clientId: string;
+  schoolId: string;
   categories: ProgramCategory[];
   stages: QuizStage[];
   onRefresh: () => void;
