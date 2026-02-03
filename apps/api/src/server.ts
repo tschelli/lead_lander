@@ -725,23 +725,36 @@ app.get("/api/public/school/:schoolId/landing/:programSlug", async (req, res) =>
   try {
     const schoolId = req.params.schoolId;
     const programSlug = req.params.programSlug;
+
+    console.log(`[Landing] Fetching for school=${schoolId}, program=${programSlug}`);
+
     const school = await getSchoolById(schoolId);
     if (!school) {
+      console.log(`[Landing] School not found: ${schoolId}`);
       return res.status(404).json({ error: "School not found" });
     }
 
+    console.log(`[Landing] Found school: ${school.name} (${school.id})`);
+
     const config = await getConfigForClient(school.client_id);
+    console.log(`[Landing] Config loaded, programs count: ${config.programs.length}`);
+
     const schoolConfig = config.schools.find((s) => s.id === schoolId);
     if (!schoolConfig) {
-      return res.status(404).json({ error: "School not found" });
+      console.log(`[Landing] School config not found in config: ${schoolId}`);
+      return res.status(404).json({ error: "School config not found" });
     }
 
     const program = config.programs.find(
       (p) => p.schoolId === schoolId && p.slug === programSlug
     );
     if (!program) {
+      console.log(`[Landing] Program not found: ${programSlug}`);
+      console.log(`[Landing] Available programs: ${config.programs.filter(p => p.schoolId === schoolId).map(p => p.slug).join(', ')}`);
       return res.status(404).json({ error: "Program not found" });
     }
+
+    console.log(`[Landing] Found program: ${program.name} (${program.id})`);
 
     const campuses = config.campuses.filter((item) => item.schoolId === schoolId);
     const programs = config.programs.filter((item) => item.schoolId === schoolId);
@@ -754,6 +767,8 @@ app.get("/api/public/school/:schoolId/landing/:programSlug", async (req, res) =>
       ctaText: "Get Started"
     };
 
+    console.log(`[Landing] Returning response with landingCopy:`, landingCopy);
+
     return res.json({
       landing: {
         school: schoolConfig,
@@ -765,8 +780,12 @@ app.get("/api/public/school/:schoolId/landing/:programSlug", async (req, res) =>
       programs
     });
   } catch (error) {
-    console.error("Public landing error", error);
-    return res.status(500).json({ error: "Internal server error" });
+    console.error("[Landing] Error:", error);
+    console.error("[Landing] Stack:", (error as Error).stack);
+    return res.status(500).json({
+      error: "Internal server error",
+      details: env.nodeEnv === "development" ? (error as Error).message : undefined
+    });
   }
 });
 
