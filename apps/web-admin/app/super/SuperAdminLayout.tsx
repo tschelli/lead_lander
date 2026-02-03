@@ -446,7 +446,6 @@ function EntityDetailPanel({
         payload = {
           name: detail.name,
           slug: detail.slug,
-          availableCampuses: detail.availableCampuses || [],
           templateType: detail.templateType || "full",
           categoryId: detail.category_id || null
         };
@@ -517,7 +516,6 @@ function EntityDetailPanel({
         if (entity.type === "program" && nextDetail) {
           nextDetail = {
             ...nextDetail,
-            availableCampuses: nextDetail.available_campuses || [],
             templateType: nextDetail.template_type,
             category_id: nextDetail.category_id
           };
@@ -641,7 +639,6 @@ function EntityDetailPanel({
                             if (entity.type === "program" && nextDetail) {
                               nextDetail = {
                                 ...nextDetail,
-                                availableCampuses: nextDetail.available_campuses || [],
                                 templateType: nextDetail.template_type
                               };
                             }
@@ -1102,24 +1099,6 @@ function EntityDetailPanel({
                             <option value="full">Full - All sections visible</option>
                             <option value="minimal">Minimal - Hero and form only</option>
                           </select>
-                        </div>
-
-                        <div className="super-admin__field">
-                          <label className="super-admin__label">Available Campuses</label>
-                          <input
-                            className="super-admin__input"
-                            value={(detail.availableCampuses || []).join(", ")}
-                            onChange={(event) =>
-                              updateDetail({
-                                availableCampuses: event.target.value
-                                  .split(",")
-                                  .map((value: string) => value.trim())
-                                  .filter(Boolean)
-                              })
-                            }
-                            placeholder="campus-1, campus-2, campus-3"
-                          />
-                          <span className="super-admin__help">Comma-separated campus IDs</span>
                         </div>
                       </div>
                     </div>

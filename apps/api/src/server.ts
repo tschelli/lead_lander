@@ -187,7 +187,6 @@ const SuperProgramCreateSchema = z.object({
 const SuperProgramUpdateSchema = z.object({
   slug: z.string().min(1).optional(),
   name: z.string().min(1).optional(),
-  availableCampuses: z.array(z.string()).optional(),
   templateType: z.enum(["minimal", "full"]).optional(),
   categoryId: z.string().uuid().nullable().optional()
 });
@@ -2867,14 +2866,19 @@ app.get("/api/super/clients/:clientId/programs/:programId", async (req, res) => 
 
     const { clientId, programId } = req.params;
     const result = await pool.query(
-      `SELECT id, client_id, school_id, slug, name, available_campuses, template_type, category_id
+      `SELECT id, client_id, school_id, slug, name, template_type, category_id
        FROM programs WHERE id = $1 AND client_id = $2`,
       [programId, clientId]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Program not found" });
     }
-    return res.json({ program: result.rows[0] });
+    // Return program with available_campuses as empty array if column doesn't exist
+    const program = {
+      ...result.rows[0],
+      available_campuses: []
+    };
+    return res.json({ program });
   } catch (error) {
     console.error("Super program fetch error", error);
     return res.status(500).json({ error: "Internal server error" });
@@ -2896,7 +2900,7 @@ app.patch("/api/super/clients/:clientId/programs/:programId", async (req, res) =
     }
 
     const existing = await pool.query(
-      `SELECT slug, name, available_campuses, template_type, category_id
+      `SELECT slug, name, template_type, category_id
        FROM programs WHERE id = $1 AND client_id = $2`,
       [programId, clientId]
     );
@@ -2908,7 +2912,6 @@ app.patch("/api/super/clients/:clientId/programs/:programId", async (req, res) =
     const next = {
       slug: parseResult.data.slug ?? current.slug,
       name: parseResult.data.name ?? current.name,
-      availableCampuses: parseResult.data.availableCampuses ?? current.available_campuses,
       templateType: parseResult.data.templateType ?? current.template_type,
       categoryId: parseResult.data.categoryId !== undefined ? parseResult.data.categoryId : current.category_id
     };
@@ -2917,15 +2920,13 @@ app.patch("/api/super/clients/:clientId/programs/:programId", async (req, res) =
       `UPDATE programs
        SET slug = $1,
            name = $2,
-           available_campuses = $3,
-           template_type = $4,
-           category_id = $5,
-           updated_at = $6
-       WHERE id = $7 AND client_id = $8`,
+           template_type = $3,
+           category_id = $4,
+           updated_at = $5
+       WHERE id = $6 AND client_id = $7`,
       [
         next.slug,
         next.name,
-        next.availableCampuses || null,
         next.templateType || null,
         next.categoryId || null,
         new Date(),
