@@ -784,7 +784,7 @@ app.get("/api/public/school/:schoolId/landing/:programSlug", async (req, res) =>
     console.error("[Landing] Stack:", (error as Error).stack);
     return res.status(500).json({
       error: "Internal server error",
-      details: env.nodeEnv === "development" ? (error as Error).message : undefined
+      message: (error as Error).message
     });
   }
 });
