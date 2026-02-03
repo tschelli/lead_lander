@@ -122,7 +122,7 @@ export function ConfigBuilderPage({
       const normalized: Program = {
         ...program,
         landingCopy: program.landingCopy || program.landing_copy,
-        templateType: program.templateType || program.template_type,
+        templateType: program.templateType || program.template_type || "minimal",
         heroImage: program.heroImage || program.hero_image,
         heroBackgroundColor: program.heroBackgroundColor || program.hero_background_color,
         heroBackgroundImage: program.heroBackgroundImage || program.hero_background_image,
@@ -238,26 +238,20 @@ export function ConfigBuilderPage({
           <div className="config-grid">
             {/* Left: Editors */}
             <div className="config-editors">
+              {/* 1. Page Configuration */}
               <TemplateSelector
-                value={config.templateType || "full"}
+                value={config.templateType || "minimal"}
                 onChange={(templateType) => updateConfig({ templateType })}
               />
 
-              <ThankYouEditor
-                value={config.schoolThankYou}
-                onChange={(schoolThankYou) => updateConfig({ schoolThankYou })}
-              />
+              {config.templateType !== "minimal" && (
+                <SectionsPanel
+                  sectionsConfig={config.sectionsConfig}
+                  onChange={(sectionsConfig) => updateConfig({ sectionsConfig })}
+                />
+              )}
 
-              <LeadFormEditor
-                leadForm={config.leadForm}
-                onChange={(leadForm) => updateConfig({ leadForm })}
-              />
-
-              <SectionsPanel
-                sectionsConfig={config.sectionsConfig}
-                onChange={(sectionsConfig) => updateConfig({ sectionsConfig })}
-              />
-
+              {/* 2. Content Sections */}
               <HeroSectionEditor
                 landingCopy={config.landingCopy}
                 heroImage={config.heroImage}
@@ -297,6 +291,17 @@ export function ConfigBuilderPage({
                   )}
                 </>
               )}
+
+              {/* 3. Lead Capture */}
+              <LeadFormEditor
+                leadForm={config.leadForm}
+                onChange={(leadForm) => updateConfig({ leadForm })}
+              />
+
+              <ThankYouEditor
+                value={config.schoolThankYou}
+                onChange={(schoolThankYou) => updateConfig({ schoolThankYou })}
+              />
             </div>
 
             {/* Right: Preview */}
@@ -329,7 +334,8 @@ function TemplateSelector({
 }) {
   return (
     <div className="config-card">
-      <h3>Landing Page Template</h3>
+      <h3>Page Layout</h3>
+      <p className="config-card-desc">Choose the landing page layout that best fits your conversion goals</p>
       <div className="template-selector">
         <label className={`template-option ${value === "minimal" ? "selected" : ""}`}>
           <input
@@ -341,7 +347,8 @@ function TemplateSelector({
           />
           <div className="template-preview minimal">
             <div className="template-label">Minimal</div>
-            <div className="template-desc">Hero with embedded form (best for conversions)</div>
+            <div className="template-desc">Hero section with embedded form</div>
+            <div className="template-badge">Recommended for conversions</div>
           </div>
         </label>
         <label className={`template-option ${value === "full" ? "selected" : ""}`}>
@@ -353,8 +360,9 @@ function TemplateSelector({
             onChange={(e) => onChange(e.target.value)}
           />
           <div className="template-preview full">
-            <div className="template-label">Full</div>
-            <div className="template-desc">All sections (highlights, testimonials, FAQs, etc.)</div>
+            <div className="template-label">Full Page</div>
+            <div className="template-desc">Hero + highlights, stats, testimonials, FAQs</div>
+            <div className="template-badge">Best for information</div>
           </div>
         </label>
       </div>
