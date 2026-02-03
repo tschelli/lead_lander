@@ -6,6 +6,12 @@ import { QuizBuilderPage } from "../[school]/quiz/QuizBuilderPage";
 import { SuperAdminQuizPage } from "./SuperAdminQuizPage";
 import "./super-admin.css";
 
+type Category = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
 type Client = {
   id: string;
   name: string;
@@ -17,12 +23,14 @@ type School = {
   slug: string;
   name: string;
   programs: Program[];
+  categories: Category[];
 };
 
 type Program = {
   id: string;
   slug: string;
   name: string;
+  category_id?: string | null;
 };
 
 type SuperAdminLayoutProps = {
