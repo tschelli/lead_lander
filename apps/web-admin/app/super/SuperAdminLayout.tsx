@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ConfigBuilderPage } from "../[school]/config/ConfigBuilderPage";
 import { QuizBuilderPage } from "../[school]/quiz/QuizBuilderPage";
 import { SuperAdminQuizPage } from "./SuperAdminQuizPage";
+import { SuperAdminLandingQuestionsPage } from "./SuperAdminLandingQuestionsPage";
 import "./super-admin.css";
 
 type Category = {
@@ -38,6 +39,300 @@ type SuperAdminLayoutProps = {
   userEmail?: string;
 };
 
+// Webhook Configuration Component
+function WebhookConfigSection({ schoolId }: { schoolId: string }) {
+  const [webhooks, setWebhooks] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
+  const [editingWebhook, setEditingWebhook] = useState<any | null>(null);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [formData, setFormData] = useState({
+    webhookUrl: "",
+    events: ["submission_created", "quiz_started", "stage_completed", "submission_updated", "quiz_completed"],
+    headers: "{}",
+    isActive: true
+  });
+
+  useEffect(() => {
+    loadWebhooks();
+  }, [schoolId]);
+
+  const loadWebhooks = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/super/schools/${schoolId}/webhooks`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setWebhooks(data.webhooks || []);
+      }
+    } catch (error) {
+      console.error("Failed to load webhooks", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const showMessage = (type: "success" | "error", text: string) => {
+    setMessage({ type, text });
+    setTimeout(() => setMessage(null), 5000);
+  };
+
+  const startCreate = () => {
+    setFormData({
+      webhookUrl: "",
+      events: ["submission_created", "quiz_started", "stage_completed", "submission_updated", "quiz_completed"],
+      headers: "{}",
+      isActive: true
+    });
+    setIsCreating(true);
+    setEditingWebhook(null);
+  };
+
+  const startEdit = (webhook: any) => {
+    setFormData({
+      webhookUrl: webhook.webhook_url,
+      events: webhook.events || [],
+      headers: JSON.stringify(webhook.headers || {}, null, 2),
+      isActive: webhook.is_active
+    });
+    setEditingWebhook(webhook);
+    setIsCreating(false);
+  };
+
+  const handleSave = async () => {
+    if (!formData.webhookUrl) {
+      showMessage("error", "Webhook URL is required");
+      return;
+    }
+
+    let headers = {};
+    try {
+      headers = JSON.parse(formData.headers);
+    } catch (error) {
+      showMessage("error", "Invalid JSON in headers");
+      return;
+    }
+
+    try {
+      const url = editingWebhook
+        ? `/api/super/webhooks/${editingWebhook.id}`
+        : `/api/super/schools/${schoolId}/webhooks`;
+
+      const res = await fetch(url, {
+        method: editingWebhook ? "PATCH" : "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          webhookUrl: formData.webhookUrl,
+          events: formData.events,
+          headers,
+          isActive: formData.isActive
+        })
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to save webhook");
+      }
+
+      showMessage("success", `Webhook ${editingWebhook ? "updated" : "created"} successfully`);
+      setIsCreating(false);
+      setEditingWebhook(null);
+      loadWebhooks();
+    } catch (error) {
+      showMessage("error", (error as Error).message);
+    }
+  };
+
+  const handleDelete = async (webhookId: string) => {
+    if (!confirm("Are you sure you want to delete this webhook?")) return;
+
+    try {
+      const res = await fetch(`/api/super/webhooks/${webhookId}`, {
+        method: "DELETE",
+        credentials: "include"
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to delete webhook");
+      }
+
+      showMessage("success", "Webhook deleted successfully");
+      loadWebhooks();
+    } catch (error) {
+      showMessage("error", (error as Error).message);
+    }
+  };
+
+  const eventOptions = [
+    { value: "submission_created", label: "Submission Created (Landing Page)" },
+    { value: "quiz_started", label: "Quiz Started" },
+    { value: "stage_completed", label: "Quiz Stage Completed" },
+    { value: "submission_updated", label: "Submission Updated" },
+    { value: "quiz_completed", label: "Quiz Completed" }
+  ];
+
+  return (
+    <div className="super-admin__section">
+      <h3 className="super-admin__section-title">Webhook Configuration</h3>
+      <div className="super-admin__section-content">
+        {message && (
+          <div className={`super-admin__save-message super-admin__save-message--${message.type}`} style={{ marginBottom: "1rem" }}>
+            {message.text}
+          </div>
+        )}
+
+        <p className="super-admin__help" style={{ marginBottom: "1rem" }}>
+          Configure webhooks to send lead data to your CRM or other systems in real-time.
+        </p>
+
+        {loading ? (
+          <div className="super-admin__skeleton">
+            <div className="super-admin__skeleton-card"></div>
+          </div>
+        ) : (
+          <>
+            {(isCreating || editingWebhook) && (
+              <div style={{ padding: "1rem", background: "#f8f9fa", borderRadius: "4px", marginBottom: "1rem" }}>
+                <h4 style={{ marginBottom: "1rem" }}>{editingWebhook ? "Edit Webhook" : "New Webhook"}</h4>
+
+                <div className="super-admin__field">
+                  <label className="super-admin__label">
+                    Webhook URL <span className="super-admin__label-required">*</span>
+                  </label>
+                  <input
+                    className="super-admin__input"
+                    value={formData.webhookUrl}
+                    onChange={(e) => setFormData({ ...formData, webhookUrl: e.target.value })}
+                    placeholder="https://your-crm.com/webhooks/leads"
+                  />
+                </div>
+
+                <div className="super-admin__field">
+                  <label className="super-admin__label">Events to Trigger</label>
+                  {eventOptions.map((event) => (
+                    <label key={event.value} style={{ display: "block", marginBottom: "0.5rem" }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.events.includes(event.value)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFormData({ ...formData, events: [...formData.events, event.value] });
+                          } else {
+                            setFormData({ ...formData, events: formData.events.filter((ev) => ev !== event.value) });
+                          }
+                        }}
+                        style={{ marginRight: "0.5rem" }}
+                      />
+                      {event.label}
+                    </label>
+                  ))}
+                </div>
+
+                <div className="super-admin__field">
+                  <label className="super-admin__label">Custom Headers (JSON)</label>
+                  <textarea
+                    className="super-admin__textarea"
+                    rows={4}
+                    value={formData.headers}
+                    onChange={(e) => setFormData({ ...formData, headers: e.target.value })}
+                    placeholder='{"Authorization": "Bearer YOUR_TOKEN"}'
+                  />
+                  <span className="super-admin__help">
+                    Optional JSON object with custom headers (e.g., authentication tokens)
+                  </span>
+                </div>
+
+                <div className="super-admin__field">
+                  <label className="super-admin__label">
+                    <input
+                      type="checkbox"
+                      checked={formData.isActive}
+                      onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                      style={{ marginRight: "0.5rem" }}
+                    />
+                    Active
+                  </label>
+                </div>
+
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button className="super-admin__btn super-admin__btn--primary" onClick={handleSave}>
+                    Save
+                  </button>
+                  <button
+                    className="super-admin__btn super-admin__btn--ghost"
+                    onClick={() => {
+                      setIsCreating(false);
+                      setEditingWebhook(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {webhooks.length === 0 && !isCreating ? (
+              <div className="super-admin__empty-state" style={{ padding: "2rem" }}>
+                <div className="super-admin__empty-icon">🔗</div>
+                <h4>No Webhooks Configured</h4>
+                <p>Add a webhook to send lead data to your CRM automatically</p>
+                <button className="super-admin__btn super-admin__btn--primary" onClick={startCreate} style={{ marginTop: "1rem" }}>
+                  + Add Webhook
+                </button>
+              </div>
+            ) : webhooks.length > 0 ? (
+              <>
+                {webhooks.map((webhook) => (
+                  <div
+                    key={webhook.id}
+                    style={{
+                      padding: "1rem",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "4px",
+                      marginBottom: "0.5rem"
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 500, marginBottom: "0.5rem" }}>
+                          {webhook.webhook_url}
+                          {webhook.is_active ? (
+                            <span style={{ marginLeft: "0.5rem", color: "#28a745", fontSize: "0.875rem" }}>● Active</span>
+                          ) : (
+                            <span style={{ marginLeft: "0.5rem", color: "#dc3545", fontSize: "0.875rem" }}>● Inactive</span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: "0.875rem", color: "#666" }}>
+                          Events: {webhook.events.join(", ")}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                        <button className="super-admin__btn super-admin__btn--ghost" onClick={() => startEdit(webhook)}>
+                          Edit
+                        </button>
+                        <button className="super-admin__btn super-admin__btn--ghost" onClick={() => handleDelete(webhook.id)}>
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {!isCreating && !editingWebhook && (
+                  <button className="super-admin__btn super-admin__btn--ghost" onClick={startCreate} style={{ marginTop: "0.5rem" }}>
+                    + Add Another Webhook
+                  </button>
+                )}
+              </>
+            ) : null}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SuperAdminLayout({ initialClients, userEmail }: SuperAdminLayoutProps) {
   const [clients, setClients] = useState<Client[]>(initialClients);
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
@@ -50,7 +345,7 @@ export function SuperAdminLayout({ initialClients, userEmail }: SuperAdminLayout
   const [searchQuery, setSearchQuery] = useState("");
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "create">("overview");
-  const [detailTab, setDetailTab] = useState<"overview" | "config" | "quiz" | "audit">("overview");
+  const [detailTab, setDetailTab] = useState<"overview" | "config" | "quiz" | "landing" | "audit">("overview");
   const mainRef = useRef<HTMLDivElement | null>(null);
   const [treeLoading, setTreeLoading] = useState(false);
 
@@ -562,15 +857,15 @@ function EntityDetailPanel({
         </h2>
       </div>
       <div className="super-admin__panel-tabs">
-        {(["overview", "config", "quiz", "audit"] as const)
+        {(["overview", "config", "quiz", "landing", "audit"] as const)
           .filter((tab) => {
             // Client: Overview and Audit only
             if (entity.type === "client") {
               return tab === "overview" || tab === "audit";
             }
-            // School: Overview, Quiz, and Audit
+            // School: Overview, Quiz, Landing, and Audit
             if (entity.type === "school") {
-              return tab === "overview" || tab === "quiz" || tab === "audit";
+              return tab === "overview" || tab === "quiz" || tab === "landing" || tab === "audit";
             }
             // Program: Overview, Config, and Audit
             if (entity.type === "program") {
@@ -584,7 +879,7 @@ function EntityDetailPanel({
               className={`super-admin__tab ${detailTab === tab ? "is-active" : ""}`}
               onClick={() => setDetailTab(tab)}
             >
-              {tab === "config" ? "Config" : tab === "quiz" ? "Quiz" : tab === "audit" ? "Audit" : "Overview"}
+              {tab === "config" ? "Config" : tab === "quiz" ? "Quiz" : tab === "landing" ? "Landing" : tab === "audit" ? "Audit" : "Overview"}
             </button>
           ))}
       </div>
@@ -1084,6 +1379,11 @@ function EntityDetailPanel({
                     </div>
                   )}
 
+                  {/* Webhook Configuration - Schools Only */}
+                  {entity.type === "school" && (
+                    <WebhookConfigSection schoolId={entityDetails.id} />
+                  )}
+
                   {/* Program Configuration - Programs Only */}
                   {entity.type === "program" && (
                     <div className="super-admin__section">
@@ -1117,6 +1417,10 @@ function EntityDetailPanel({
 
         {detailTab === "quiz" && entity.type === "school" && entityDetails && (
           <SuperAdminQuizPage schoolId={entityDetails.id} />
+        )}
+
+        {detailTab === "landing" && entity.type === "school" && entityDetails && (
+          <SuperAdminLandingQuestionsPage schoolId={entityDetails.id} />
         )}
 
         {detailTab === "audit" && (

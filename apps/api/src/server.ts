@@ -293,6 +293,113 @@ function requireSuperAdmin(auth: AuthContext | null) {
   return { ok: true as const };
 }
 
+// Trigger webhook for a school event
+async function triggerWebhook(schoolId: string, eventType: string, submissionId: string, additionalData?: any) {
+  try {
+    // Get active webhook configs for this school
+    const webhooksResult = await pool.query(
+      `SELECT id, webhook_url, events, headers
+       FROM webhook_configs
+       WHERE school_id = $1 AND is_active = true AND $2 = ANY(events)`,
+      [schoolId, eventType]
+    );
+
+    if (webhooksResult.rows.length === 0) {
+      return; // No webhooks configured for this event
+    }
+
+    // Get submission data
+    const submissionResult = await pool.query(
+      `SELECT s.*, qs.answers as quiz_answers, qs.category_scores as quiz_category_scores, qs.program_scores as quiz_program_scores
+       FROM submissions s
+       LEFT JOIN quiz_sessions qs ON qs.id = s.quiz_session_id
+       WHERE s.id = $1`,
+      [submissionId]
+    );
+
+    if (submissionResult.rows.length === 0) {
+      console.error(`Submission ${submissionId} not found for webhook`);
+      return;
+    }
+
+    const submission = submissionResult.rows[0];
+
+    // Build webhook payload
+    const payload = {
+      event: eventType,
+      timestamp: new Date().toISOString(),
+      submissionId: submission.id,
+      schoolId: submission.school_id,
+      campusId: submission.campus_id,
+      programId: submission.program_id,
+      recommendedProgramId: submission.recommended_program_id,
+      contact: {
+        firstName: submission.first_name,
+        lastName: submission.last_name,
+        email: submission.email,
+        phone: submission.phone
+      },
+      landingAnswers: submission.landing_answers || {},
+      quizAnswers: submission.quiz_answers || {},
+      quizProgress: submission.quiz_progress || {},
+      categoryScores: submission.category_scores || {},
+      programScores: submission.program_scores || {},
+      isQualified: submission.is_qualified,
+      disqualificationReasons: submission.disqualification_reasons || [],
+      status: submission.status,
+      source: submission.source,
+      quizStartedAt: submission.quiz_started_at,
+      quizCompletedAt: submission.quiz_completed_at,
+      createdAt: submission.created_at,
+      updatedAt: submission.updated_at,
+      ...additionalData
+    };
+
+    // Trigger each webhook
+    for (const webhook of webhooksResult.rows) {
+      try {
+        const headers: any = {
+          "Content-Type": "application/json",
+          "User-Agent": "LeadLander-Webhook/1.0",
+          ...(webhook.headers || {})
+        };
+
+        const response = await fetch(webhook.webhook_url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload)
+        });
+
+        const responseBody = await response.text();
+
+        // Log webhook delivery
+        await pool.query(
+          `INSERT INTO webhook_logs
+           (id, webhook_config_id, submission_id, event_type, payload, response_status, response_body, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+          [uuidv4(), webhook.id, submissionId, eventType, payload, response.status, responseBody.substring(0, 5000)]
+        );
+
+        if (!response.ok) {
+          console.error(`Webhook ${webhook.id} failed: ${response.status} ${responseBody}`);
+        }
+      } catch (error: any) {
+        console.error(`Webhook ${webhook.id} error:`, error);
+
+        // Log webhook error
+        await pool.query(
+          `INSERT INTO webhook_logs
+           (id, webhook_config_id, submission_id, event_type, payload, error_message, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+          [uuidv4(), webhook.id, submissionId, eventType, payload, error.message]
+        );
+      }
+    }
+  } catch (error) {
+    console.error("Webhook trigger error:", error);
+  }
+}
+
 app.use("/api/admin", attachAuthContext);
 app.use("/api/super", attachAuthContext);
 
@@ -936,6 +1043,133 @@ app.get("/api/admin/schools", attachAuthContext, requireClientAccess, async (req
     });
   } catch (error) {
     console.error("Admin schools list error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get landing page questions for a school (public endpoint)
+app.get("/api/public/schools/:schoolId/landing-questions", async (req, res) => {
+  try {
+    const { schoolId } = req.params;
+
+    const questions = await pool.query(
+      `SELECT lpq.id, lpq.question_text, lpq.question_type, lpq.help_text, lpq.display_order, lpq.is_required, lpq.crm_field_name
+       FROM landing_page_questions lpq
+       WHERE lpq.school_id = $1
+       ORDER BY lpq.display_order, lpq.created_at`,
+      [schoolId]
+    );
+
+    const questionIds = questions.rows.map((q) => q.id);
+    let options: any[] = [];
+
+    if (questionIds.length > 0) {
+      const optionsResult = await pool.query(
+        `SELECT id, question_id, option_text, option_value, display_order
+         FROM landing_page_question_options
+         WHERE question_id = ANY($1)
+         ORDER BY question_id, display_order`,
+        [questionIds]
+      );
+      options = optionsResult.rows;
+    }
+
+    return res.json({
+      questions: questions.rows.map((q) => ({
+        id: q.id,
+        questionText: q.question_text,
+        questionType: q.question_type,
+        helpText: q.help_text,
+        displayOrder: q.display_order,
+        isRequired: q.is_required,
+        crmFieldName: q.crm_field_name,
+        options: options
+          .filter((o) => o.question_id === q.id)
+          .map((o) => ({
+            id: o.id,
+            optionText: o.option_text,
+            optionValue: o.option_value,
+            displayOrder: o.display_order
+          }))
+      }))
+    });
+  } catch (error) {
+    console.error("Public landing questions fetch error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Create submission from landing page (public endpoint)
+app.post("/api/public/schools/:schoolId/submissions", async (req, res) => {
+  try {
+    const { schoolId } = req.params;
+    const {
+      programId,
+      campusId,
+      firstName,
+      lastName,
+      email,
+      phone,
+      landingAnswers,
+      consented,
+      consentTextVersion,
+      consentTimestamp
+    } = req.body;
+
+    // Validate required fields
+    if (!firstName || !lastName || !email) {
+      return res.status(400).json({ error: "First name, last name, and email are required" });
+    }
+
+    // Get school details
+    const schoolResult = await pool.query(
+      "SELECT client_id FROM schools WHERE id = $1",
+      [schoolId]
+    );
+
+    if (schoolResult.rows.length === 0) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const clientId = schoolResult.rows[0].client_id;
+    const submissionId = uuidv4();
+    const idempotencyKey = `landing_${schoolId}_${email}_${Date.now()}`;
+
+    // Create submission
+    await pool.query(
+      `INSERT INTO submissions
+       (id, client_id, school_id, campus_id, program_id, first_name, last_name, email, phone,
+        landing_answers, status, source, idempotency_key, consented, consent_text_version, consent_timestamp,
+        created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())`,
+      [
+        submissionId,
+        clientId,
+        schoolId,
+        campusId || null,
+        programId || null,
+        firstName,
+        lastName,
+        email,
+        phone || null,
+        landingAnswers || {},
+        "pending",
+        "landing_page",
+        idempotencyKey,
+        consented || false,
+        consentTextVersion || null,
+        consentTimestamp || null
+      ]
+    );
+
+    // Trigger webhook for submission_created event
+    triggerWebhook(schoolId, "submission_created", submissionId).catch((err) => {
+      console.error("Webhook trigger failed:", err);
+    });
+
+    return res.status(201).json({ submissionId, success: true });
+  } catch (error) {
+    console.error("Landing page submission create error", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -4006,13 +4240,397 @@ app.delete("/api/super/quiz/options/:optionId", async (req, res) => {
 });
 
 // ============================================================================
+// LANDING PAGE QUESTIONS API (Super Admin)
+// ============================================================================
+
+// Get all landing page questions for a school
+app.get("/api/super/schools/:schoolId/landing-questions", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { schoolId } = req.params;
+
+    // Get questions with their options
+    const questions = await pool.query(
+      `SELECT lpq.*
+       FROM landing_page_questions lpq
+       WHERE lpq.school_id = $1
+       ORDER BY lpq.display_order, lpq.created_at`,
+      [schoolId]
+    );
+
+    const questionIds = questions.rows.map((q) => q.id);
+    let options: any[] = [];
+
+    if (questionIds.length > 0) {
+      const optionsResult = await pool.query(
+        `SELECT * FROM landing_page_question_options
+         WHERE question_id = ANY($1)
+         ORDER BY question_id, display_order`,
+        [questionIds]
+      );
+      options = optionsResult.rows;
+    }
+
+    return res.json({
+      questions: questions.rows.map((q) => ({
+        id: q.id,
+        schoolId: q.school_id,
+        questionText: q.question_text,
+        questionType: q.question_type,
+        helpText: q.help_text,
+        displayOrder: q.display_order,
+        isRequired: q.is_required,
+        crmFieldName: q.crm_field_name,
+        createdAt: q.created_at,
+        updatedAt: q.updated_at,
+        options: options
+          .filter((o) => o.question_id === q.id)
+          .map((o) => ({
+            id: o.id,
+            optionText: o.option_text,
+            optionValue: o.option_value,
+            displayOrder: o.display_order
+          }))
+      }))
+    });
+  } catch (error) {
+    console.error("Landing questions list error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Create a new landing page question
+app.post("/api/super/schools/:schoolId/landing-questions", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { schoolId } = req.params;
+    const {
+      questionText,
+      questionType,
+      helpText,
+      displayOrder,
+      isRequired,
+      crmFieldName
+    } = req.body;
+
+    const questionId = uuidv4();
+
+    await pool.query(
+      `INSERT INTO landing_page_questions
+       (id, school_id, question_text, question_type, help_text, display_order, is_required, crm_field_name, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+      [questionId, schoolId, questionText, questionType, helpText || null, displayOrder || 0, isRequired || false, crmFieldName || null]
+    );
+
+    return res.status(201).json({ questionId, success: true });
+  } catch (error) {
+    console.error("Landing question create error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Update a landing page question
+app.patch("/api/super/landing-questions/:questionId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { questionId } = req.params;
+    const {
+      questionText,
+      questionType,
+      helpText,
+      displayOrder,
+      isRequired,
+      crmFieldName
+    } = req.body;
+
+    const result = await pool.query(
+      `UPDATE landing_page_questions
+       SET question_text = COALESCE($1, question_text),
+           question_type = COALESCE($2, question_type),
+           help_text = COALESCE($3, help_text),
+           display_order = COALESCE($4, display_order),
+           is_required = COALESCE($5, is_required),
+           crm_field_name = COALESCE($6, crm_field_name),
+           updated_at = NOW()
+       WHERE id = $7`,
+      [questionText, questionType, helpText, displayOrder, isRequired, crmFieldName, questionId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Question not found" });
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Landing question update error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Delete a landing page question
+app.delete("/api/super/landing-questions/:questionId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { questionId } = req.params;
+
+    // Options will be cascade deleted
+    const result = await pool.query(
+      "DELETE FROM landing_page_questions WHERE id = $1",
+      [questionId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Question not found" });
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Landing question delete error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Create a new landing page question option
+app.post("/api/super/landing-questions/:questionId/options", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { questionId } = req.params;
+    const { optionText, optionValue, displayOrder } = req.body;
+
+    const optionId = uuidv4();
+
+    await pool.query(
+      `INSERT INTO landing_page_question_options
+       (id, question_id, option_text, option_value, display_order, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())`,
+      [optionId, questionId, optionText, optionValue || optionText, displayOrder || 0]
+    );
+
+    return res.status(201).json({ optionId, success: true });
+  } catch (error) {
+    console.error("Landing question option create error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Update a landing page question option
+app.patch("/api/super/landing-question-options/:optionId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { optionId } = req.params;
+    const { optionText, optionValue, displayOrder } = req.body;
+
+    const result = await pool.query(
+      `UPDATE landing_page_question_options
+       SET option_text = COALESCE($1, option_text),
+           option_value = COALESCE($2, option_value),
+           display_order = COALESCE($3, display_order)
+       WHERE id = $4`,
+      [optionText, optionValue, displayOrder, optionId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Option not found" });
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Landing question option update error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Delete a landing page question option
+app.delete("/api/super/landing-question-options/:optionId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { optionId } = req.params;
+
+    const result = await pool.query(
+      "DELETE FROM landing_page_question_options WHERE id = $1",
+      [optionId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Option not found" });
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Landing question option delete error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ============================================================================
+// WEBHOOK CONFIGURATION API (Super Admin)
+// ============================================================================
+
+// Get webhook configs for a school
+app.get("/api/super/schools/:schoolId/webhooks", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { schoolId } = req.params;
+
+    const result = await pool.query(
+      `SELECT id, school_id, webhook_url, events, headers, is_active, created_at, updated_at
+       FROM webhook_configs
+       WHERE school_id = $1
+       ORDER BY created_at DESC`,
+      [schoolId]
+    );
+
+    return res.json({ webhooks: result.rows });
+  } catch (error) {
+    console.error("Webhook configs list error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Create a webhook config
+app.post("/api/super/schools/:schoolId/webhooks", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { schoolId } = req.params;
+    const { webhookUrl, events, headers, isActive } = req.body;
+
+    const webhookId = uuidv4();
+
+    await pool.query(
+      `INSERT INTO webhook_configs
+       (id, school_id, webhook_url, events, headers, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())`,
+      [
+        webhookId,
+        schoolId,
+        webhookUrl,
+        events || ["submission_created", "quiz_started", "stage_completed", "submission_updated", "quiz_completed"],
+        headers || {},
+        isActive !== false
+      ]
+    );
+
+    return res.status(201).json({ webhookId, success: true });
+  } catch (error) {
+    console.error("Webhook config create error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Update a webhook config
+app.patch("/api/super/webhooks/:webhookId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { webhookId } = req.params;
+    const { webhookUrl, events, headers, isActive } = req.body;
+
+    const result = await pool.query(
+      `UPDATE webhook_configs
+       SET webhook_url = COALESCE($1, webhook_url),
+           events = COALESCE($2, events),
+           headers = COALESCE($3, headers),
+           is_active = COALESCE($4, is_active),
+           updated_at = NOW()
+       WHERE id = $5`,
+      [webhookUrl, events, headers, isActive, webhookId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Webhook config not found" });
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Webhook config update error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Delete a webhook config
+app.delete("/api/super/webhooks/:webhookId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { webhookId } = req.params;
+
+    const result = await pool.query(
+      "DELETE FROM webhook_configs WHERE id = $1",
+      [webhookId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Webhook config not found" });
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Webhook config delete error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ============================================================================
 // PUBLIC QUIZ SESSION API
 // ============================================================================
 
 // Start a new quiz session
 app.post("/api/public/quiz/sessions", async (req, res) => {
   try {
-    const { schoolId } = req.body;
+    const { schoolId, submissionId } = req.body;
 
     if (!schoolId) {
       return res.status(400).json({ error: "School ID is required" });
@@ -4030,13 +4648,25 @@ app.post("/api/public/quiz/sessions", async (req, res) => {
 
     const clientId = schoolResult.rows[0].client_id;
 
+    // If submissionId provided, validate it exists
+    if (submissionId) {
+      const submissionResult = await pool.query(
+        "SELECT id FROM submissions WHERE id = $1 AND school_id = $2",
+        [submissionId, schoolId]
+      );
+
+      if (submissionResult.rows.length === 0) {
+        return res.status(404).json({ error: "Submission not found" });
+      }
+    }
+
     // Get first stage
     const stagesResult = await pool.query(
       `SELECT id, display_order FROM quiz_stages
-       WHERE client_id = $1 AND (school_id IS NULL OR school_id = $2) AND is_active = true
+       WHERE school_id = $1 AND is_active = true
        ORDER BY display_order
        LIMIT 1`,
-      [clientId, schoolId]
+      [schoolId]
     );
 
     const currentStageId = stagesResult.rows.length > 0 ? stagesResult.rows[0].id : null;
@@ -4049,6 +4679,21 @@ app.post("/api/public/quiz/sessions", async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
       [sessionId, clientId, schoolId, currentStageId, currentStageOrder]
     );
+
+    // Link quiz session to submission if provided
+    if (submissionId) {
+      await pool.query(
+        `UPDATE submissions
+         SET quiz_session_id = $1, quiz_started_at = NOW(), updated_at = NOW()
+         WHERE id = $2`,
+        [sessionId, submissionId]
+      );
+
+      // Trigger quiz_started webhook
+      triggerWebhook(schoolId, "quiz_started", submissionId).catch((err) => {
+        console.error("Webhook trigger failed:", err);
+      });
+    }
 
     return res.status(201).json({ sessionId });
   } catch (error) {
@@ -4365,11 +5010,6 @@ app.post("/api/public/quiz/sessions/:sessionId/submit", async (req, res) => {
     const session = sessionResult.rows[0];
     const contactInfo = session.contact_info || {};
 
-    // Validate required contact info
-    if (!contactInfo.first_name || !contactInfo.last_name || !contactInfo.email) {
-      return res.status(400).json({ error: "Missing required contact information" });
-    }
-
     const finalProgramId = selectedProgramId || session.recommended_program_id;
 
     if (!finalProgramId) {
@@ -4379,36 +5019,87 @@ app.post("/api/public/quiz/sessions/:sessionId/submit", async (req, res) => {
     // Get campus ID (use first available or default)
     const campusId = contactInfo.campus || "default";
 
-    // Create submission
-    const submissionId = uuidv4();
-    const idempotencyKey = `quiz_${sessionId}_${Date.now()}`;
-
-    await pool.query(
-      `INSERT INTO submissions
-       (id, school_id, campus_id, program_id, first_name, last_name, email, phone,
-        answers, status, idempotency_key, consented, consent_text_version, consent_timestamp,
-        quiz_session_id, is_qualified, disqualification_reasons, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())`,
-      [
-        submissionId,
-        session.school_id,
-        campusId,
-        finalProgramId,
-        contactInfo.first_name,
-        contactInfo.last_name,
-        contactInfo.email,
-        contactInfo.phone || null,
-        session.answers,
-        "pending",
-        idempotencyKey,
-        true, // consented
-        "quiz_v1",
-        new Date(),
-        sessionId,
-        !session.is_disqualified,
-        session.disqualification_reasons
-      ]
+    // Check if submission already exists (linked from landing page)
+    const existingSubmissionResult = await pool.query(
+      "SELECT id FROM submissions WHERE quiz_session_id = $1",
+      [sessionId]
     );
+
+    let submissionId;
+    let isNewSubmission = false;
+
+    if (existingSubmissionResult.rows.length > 0) {
+      // Update existing submission
+      submissionId = existingSubmissionResult.rows[0].id;
+
+      await pool.query(
+        `UPDATE submissions
+         SET program_id = $1,
+             recommended_program_id = $2,
+             answers = $3,
+             category_scores = $4,
+             program_scores = $5,
+             is_qualified = $6,
+             disqualification_reasons = $7,
+             quiz_completed_at = NOW(),
+             status = 'pending',
+             updated_at = NOW()
+         WHERE id = $8`,
+        [
+          finalProgramId,
+          session.recommended_program_id,
+          session.answers,
+          session.category_scores || {},
+          session.program_scores || {},
+          !session.is_disqualified,
+          session.disqualification_reasons || [],
+          submissionId
+        ]
+      );
+    } else {
+      // Create new submission (quiz without landing page)
+      submissionId = uuidv4();
+      isNewSubmission = true;
+      const idempotencyKey = `quiz_${sessionId}_${Date.now()}`;
+
+      // Validate required contact info only for new submissions
+      if (!contactInfo.first_name || !contactInfo.last_name || !contactInfo.email) {
+        return res.status(400).json({ error: "Missing required contact information" });
+      }
+
+      await pool.query(
+        `INSERT INTO submissions
+         (id, client_id, school_id, campus_id, program_id, first_name, last_name, email, phone,
+          answers, status, source, idempotency_key, consented, consent_text_version, consent_timestamp,
+          quiz_session_id, is_qualified, disqualification_reasons, category_scores, program_scores,
+          recommended_program_id, quiz_started_at, quiz_completed_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW(), NOW(), NOW(), NOW())`,
+        [
+          submissionId,
+          session.client_id,
+          session.school_id,
+          campusId,
+          finalProgramId,
+          contactInfo.first_name,
+          contactInfo.last_name,
+          contactInfo.email,
+          contactInfo.phone || null,
+          session.answers,
+          "pending",
+          "direct_quiz",
+          idempotencyKey,
+          true, // consented
+          "quiz_v1",
+          new Date(),
+          sessionId,
+          !session.is_disqualified,
+          session.disqualification_reasons || [],
+          session.category_scores || {},
+          session.program_scores || {},
+          session.recommended_program_id
+        ]
+      );
+    }
 
     // Mark session as completed
     await pool.query(
@@ -4417,6 +5108,17 @@ app.post("/api/public/quiz/sessions/:sessionId/submit", async (req, res) => {
        WHERE id = $3`,
       [finalProgramId, financialAidInterested || false, sessionId]
     );
+
+    // Trigger webhooks
+    if (isNewSubmission) {
+      triggerWebhook(session.school_id, "submission_created", submissionId).catch((err) => {
+        console.error("Webhook trigger failed:", err);
+      });
+    }
+
+    triggerWebhook(session.school_id, "quiz_completed", submissionId).catch((err) => {
+      console.error("Webhook trigger failed:", err);
+    });
 
     return res.status(201).json({ submissionId, success: true });
   } catch (error) {
