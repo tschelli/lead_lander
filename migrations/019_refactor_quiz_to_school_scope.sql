@@ -17,6 +17,12 @@ DROP TABLE IF EXISTS quiz_questions CASCADE;
 -- 2. REFACTOR PROGRAM CATEGORIES TO SCHOOL SCOPE
 -- ============================================================================
 
+-- Drop existing foreign key constraint FIRST (before any data manipulation)
+ALTER TABLE program_categories DROP CONSTRAINT IF EXISTS program_categories_client_id_fkey;
+
+-- Drop unique constraint FIRST
+ALTER TABLE program_categories DROP CONSTRAINT IF EXISTS program_categories_client_id_slug_key;
+
 -- Check if program_categories has any existing data
 -- If it does, we need to handle it carefully
 DO $$
@@ -51,9 +57,6 @@ BEGIN
   END IF;
 END $$;
 
--- Drop existing foreign key constraint
-ALTER TABLE program_categories DROP CONSTRAINT IF EXISTS program_categories_client_id_fkey;
-
 -- Rename client_id to school_id
 ALTER TABLE program_categories RENAME COLUMN client_id TO school_id;
 
@@ -62,8 +65,7 @@ ALTER TABLE program_categories
   ADD CONSTRAINT program_categories_school_id_fkey
   FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE;
 
--- Update unique constraint to use school_id
-ALTER TABLE program_categories DROP CONSTRAINT IF EXISTS program_categories_client_id_slug_key;
+-- Add unique constraint to use school_id
 ALTER TABLE program_categories ADD CONSTRAINT program_categories_school_id_slug_key UNIQUE(school_id, slug);
 
 -- Update indexes
