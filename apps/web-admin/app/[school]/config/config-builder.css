@@ -1,8 +1,8 @@
 /* Config Builder Styles */
 
 .config-builder {
-  padding: 24px;
-  max-width: 1800px;
+  padding: 0;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
@@ -35,35 +35,114 @@
   border-bottom-color: #0e7490;
 }
 
+/* Sticky Header */
+.config-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: white;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+  padding: 16px 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.config-sticky-header.has-message {
+  padding-top: 12px;
+}
+
+.config-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.config-program-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.config-program-selector label {
+  font-weight: 600;
+  font-size: 14px;
+  color: rgba(15, 23, 42, 0.9);
+  white-space: nowrap;
+}
+
+.config-header-actions {
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+}
+
 /* Messages */
 .config-message {
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-radius: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   font-weight: 500;
+  font-size: 14px;
 }
 
 .config-message-success {
   background: #d1fae5;
   color: #065f46;
+  border: 1px solid #a7f3d0;
 }
 
 .config-message-error {
   background: #fee2e2;
   color: #991b1b;
+  border: 1px solid #fecaca;
 }
 
-/* Program Selector */
-.config-selector {
-  margin-bottom: 24px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.config-selector label {
+/* Buttons */
+.config-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
   font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  white-space: nowrap;
+}
+
+.config-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.config-btn-primary {
+  background: #0e7490;
+  color: white;
+}
+
+.config-btn-primary:hover:not(:disabled) {
+  background: #0c6479;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(14, 116, 144, 0.2);
+}
+
+.config-btn-secondary {
+  background: white;
+  color: #0e7490;
+  border: 1px solid #0e7490;
+}
+
+.config-btn-secondary:hover:not(:disabled) {
+  background: rgba(14, 116, 144, 0.05);
+}
+
+.config-btn-ghost {
+  background: transparent;
+  color: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(15, 23, 42, 0.2);
+}
+
+.config-btn-ghost:hover:not(:disabled) {
+  background: rgba(15, 23, 42, 0.05);
   color: rgba(15, 23, 42, 0.9);
 }
 
@@ -74,28 +153,48 @@
   font-size: 14px;
   min-width: 250px;
   cursor: pointer;
+  transition: border-color 0.2s;
 }
 
-.config-actions {
-  display: flex;
-  gap: 12px;
-  margin-left: auto;
+.config-select:focus {
+  outline: none;
+  border-color: #0e7490;
+  box-shadow: 0 0 0 3px rgba(14, 116, 144, 0.1);
 }
 
-/* Grid Layout */
-.config-grid {
-  display: grid;
-  grid-template-columns: 1fr 600px;
-  gap: 24px;
-}
-
-.config-editors {
+/* Editors Container */
+.config-editors-container {
+  padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 24px;
-  overflow-y: auto;
-  max-height: calc(100vh - 300px);
-  padding-right: 8px;
+}
+
+/* Section Dividers */
+.config-section-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 32px 0 24px 0;
+}
+
+.config-section-divider:first-child {
+  margin-top: 0;
+}
+
+.config-section-divider-line {
+  flex: 1;
+  height: 1px;
+  background: rgba(15, 23, 42, 0.15);
+}
+
+.config-section-divider-text {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: rgba(15, 23, 42, 0.6);
+  white-space: nowrap;
 }
 
 /* Card */
@@ -499,25 +598,88 @@
   gap: 12px;
 }
 
+/* Preview Modal */
+.config-preview-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+}
+
+.config-preview-modal-content {
+  background: white;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 900px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: modalSlideIn 0.2s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.config-preview-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.config-preview-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.config-preview-modal-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+  color: rgba(15, 23, 42, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.config-preview-modal-close:hover {
+  background: rgba(15, 23, 42, 0.1);
+  color: rgba(15, 23, 42, 0.9);
+}
+
+.config-preview-modal-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
 /* Responsive */
-@media (max-width: 1400px) {
-  .config-grid {
-    grid-template-columns: 1fr 500px;
-  }
-}
-
-@media (max-width: 1200px) {
-  .config-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .config-preview {
-    position: relative;
-    top: 0;
-    height: 600px;
-  }
-}
-
 @media (max-width: 768px) {
   .template-selector {
     grid-template-columns: 1fr;
@@ -528,13 +690,22 @@
     grid-template-columns: 1fr;
   }
 
-  .config-selector {
+  .config-header-row {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
   }
 
-  .config-actions {
+  .config-header-actions {
     margin-left: 0;
-    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .config-preview-modal {
+    padding: 0;
+  }
+
+  .config-preview-modal-content {
+    max-height: 100vh;
+    border-radius: 0;
   }
 }

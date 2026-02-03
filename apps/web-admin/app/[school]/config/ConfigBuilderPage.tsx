@@ -78,6 +78,7 @@ export function ConfigBuilderPage({
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
   const landingPreviewBase = process.env.NEXT_PUBLIC_LANDING_BASE_URL || "";
 
 
@@ -190,132 +191,169 @@ export function ConfigBuilderPage({
 
   return (
     <div className="config-builder">
-      {/* Messages */}
-      {message && (
-        <div className={`config-message config-message-${message.type}`}>
-          {message.text}
-        </div>
-      )}
-
       <div className="config-content">
-        {/* Program Selector */}
-        <div className="config-selector">
-          <label>Select Program:</label>
-          <select
-            value={selectedProgram?.id || ""}
-            onChange={(e) => {
-              const program = programs.find((p) => p.id === e.target.value);
-              setSelectedProgram(program || null);
-            }}
-            className="config-select"
-          >
-            {programs.map((program) => (
-              <option key={program.id} value={program.id}>
-                {program.name}
-              </option>
-            ))}
-          </select>
-
-          {isDirty && (
-            <div className="config-actions">
-              <button onClick={saveConfig} disabled={isSaving} className="admin-btn">
-                {isSaving ? "Saving..." : "Save changes"}
-              </button>
-              <button
-                onClick={() => {
-                  if (selectedProgram) loadProgramConfig(selectedProgram.id);
-                }}
-                className="admin-btn-ghost"
-              >
-                Discard Changes
-              </button>
+        {/* Sticky Header with Program Selector and Save Bar */}
+        <div className={`config-sticky-header ${message ? "has-message" : ""}`}>
+          {message && (
+            <div className={`config-message config-message-${message.type}`}>
+              {message.text}
             </div>
           )}
-        </div>
 
-        {/* Editor Grid */}
-        {config && (
-          <div className="config-grid">
-            {/* Left: Editors */}
-            <div className="config-editors">
-              {/* 1. Page Configuration */}
-              <TemplateSelector
-                value={config.templateType || "minimal"}
-                onChange={(templateType) => updateConfig({ templateType })}
-              />
-
-              {config.templateType !== "minimal" && (
-                <SectionsPanel
-                  sectionsConfig={config.sectionsConfig}
-                  onChange={(sectionsConfig) => updateConfig({ sectionsConfig })}
-                />
-              )}
-
-              {/* 2. Content Sections */}
-              <HeroSectionEditor
-                landingCopy={config.landingCopy}
-                heroImage={config.heroImage}
-                bgColor={config.heroBackgroundColor}
-                bgImage={config.heroBackgroundImage}
-                onChange={updateConfig}
-              />
-
-              {config.templateType !== "minimal" && (
-                <>
-                  {config.sectionsConfig?.visible?.highlights !== false && (
-                    <HighlightsEditor
-                      highlights={config.highlights || []}
-                      onChange={(highlights) => updateConfig({ highlights })}
-                    />
-                  )}
-
-                  {config.sectionsConfig?.visible?.stats !== false && (
-                    <StatsEditor
-                      stats={config.stats || {}}
-                      onChange={(stats) => updateConfig({ stats })}
-                    />
-                  )}
-
-                  {config.sectionsConfig?.visible?.testimonials !== false && (
-                    <TestimonialsEditor
-                      testimonials={config.testimonials || []}
-                      onChange={(testimonials) => updateConfig({ testimonials })}
-                    />
-                  )}
-
-                  {config.sectionsConfig?.visible?.faqs !== false && (
-                    <FAQsEditor
-                      faqs={config.faqs || []}
-                      onChange={(faqs) => updateConfig({ faqs })}
-                    />
-                  )}
-                </>
-              )}
-
-              {/* 3. Lead Capture */}
-              <LeadFormEditor
-                leadForm={config.leadForm}
-                onChange={(leadForm) => updateConfig({ leadForm })}
-              />
-
-              <ThankYouEditor
-                value={config.schoolThankYou}
-                onChange={(schoolThankYou) => updateConfig({ schoolThankYou })}
-              />
+          <div className="config-header-row">
+            <div className="config-program-selector">
+              <label>Program:</label>
+              <select
+                value={selectedProgram?.id || ""}
+                onChange={(e) => {
+                  const program = programs.find((p) => p.id === e.target.value);
+                  setSelectedProgram(program || null);
+                }}
+                className="config-select"
+              >
+                {programs.map((program) => (
+                  <option key={program.id} value={program.id}>
+                    {program.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* Right: Preview */}
-            <div className="config-preview">
-              <PreviewPanel
-                schoolSlug={schoolSlug}
-                program={selectedProgram}
-                baseUrl={landingPreviewBase}
+            <div className="config-header-actions">
+              <button
+                onClick={() => setShowPreview(true)}
+                className="config-btn config-btn-secondary"
+              >
+                Preview
+              </button>
+              {isDirty && (
+                <>
+                  <button onClick={saveConfig} disabled={isSaving} className="config-btn config-btn-primary">
+                    {isSaving ? "Saving..." : "Save Changes"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (selectedProgram) loadProgramConfig(selectedProgram.id);
+                    }}
+                    className="config-btn config-btn-ghost"
+                    disabled={isSaving}
+                  >
+                    Discard
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Editors */}
+        {config && (
+          <div className="config-editors-container">
+            {/* Page Configuration Section */}
+            <div className="config-section-divider">
+              <div className="config-section-divider-line"></div>
+              <div className="config-section-divider-text">Page Configuration</div>
+              <div className="config-section-divider-line"></div>
+            </div>
+
+            <TemplateSelector
+              value={config.templateType || "minimal"}
+              onChange={(templateType) => updateConfig({ templateType })}
+            />
+
+            {config.templateType !== "minimal" && (
+              <SectionsPanel
+                sectionsConfig={config.sectionsConfig}
+                onChange={(sectionsConfig) => updateConfig({ sectionsConfig })}
               />
-              <PreviewDebugPanel
-                baseUrl={landingPreviewBase}
-                schoolSlug={schoolSlug}
-                programSlug={selectedProgram?.slug}
-              />
+            )}
+
+            {/* Content Sections */}
+            <div className="config-section-divider">
+              <div className="config-section-divider-line"></div>
+              <div className="config-section-divider-text">Content Sections</div>
+              <div className="config-section-divider-line"></div>
+            </div>
+
+            <HeroSectionEditor
+              landingCopy={config.landingCopy}
+              heroImage={config.heroImage}
+              bgColor={config.heroBackgroundColor}
+              bgImage={config.heroBackgroundImage}
+              onChange={updateConfig}
+            />
+
+            {config.templateType !== "minimal" && (
+              <>
+                {config.sectionsConfig?.visible?.highlights !== false && (
+                  <HighlightsEditor
+                    highlights={config.highlights || []}
+                    onChange={(highlights) => updateConfig({ highlights })}
+                  />
+                )}
+
+                {config.sectionsConfig?.visible?.stats !== false && (
+                  <StatsEditor
+                    stats={config.stats || {}}
+                    onChange={(stats) => updateConfig({ stats })}
+                  />
+                )}
+
+                {config.sectionsConfig?.visible?.testimonials !== false && (
+                  <TestimonialsEditor
+                    testimonials={config.testimonials || []}
+                    onChange={(testimonials) => updateConfig({ testimonials })}
+                  />
+                )}
+
+                {config.sectionsConfig?.visible?.faqs !== false && (
+                  <FAQsEditor
+                    faqs={config.faqs || []}
+                    onChange={(faqs) => updateConfig({ faqs })}
+                  />
+                )}
+              </>
+            )}
+
+            {/* Lead Capture Section */}
+            <div className="config-section-divider">
+              <div className="config-section-divider-line"></div>
+              <div className="config-section-divider-text">Lead Capture</div>
+              <div className="config-section-divider-line"></div>
+            </div>
+
+            <LeadFormEditor
+              leadForm={config.leadForm}
+              onChange={(leadForm) => updateConfig({ leadForm })}
+            />
+          </div>
+        )}
+
+        {/* Preview Modal */}
+        {showPreview && selectedProgram && (
+          <div className="config-preview-modal" onClick={() => setShowPreview(false)}>
+            <div className="config-preview-modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="config-preview-modal-header">
+                <h3>Preview: {selectedProgram.name}</h3>
+                <button
+                  className="config-preview-modal-close"
+                  onClick={() => setShowPreview(false)}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="config-preview-modal-body">
+                <PreviewPanel
+                  schoolSlug={schoolSlug}
+                  program={selectedProgram}
+                  baseUrl={landingPreviewBase}
+                />
+                <PreviewDebugPanel
+                  baseUrl={landingPreviewBase}
+                  schoolSlug={schoolSlug}
+                  programSlug={selectedProgram?.slug}
+                />
+              </div>
             </div>
           </div>
         )}
