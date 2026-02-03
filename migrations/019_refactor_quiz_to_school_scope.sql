@@ -17,6 +17,40 @@ DROP TABLE IF EXISTS quiz_questions CASCADE;
 -- 2. REFACTOR PROGRAM CATEGORIES TO SCHOOL SCOPE
 -- ============================================================================
 
+-- Check if program_categories has any existing data
+-- If it does, we need to handle it carefully
+DO $$
+DECLARE
+  category_count INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO category_count FROM program_categories;
+
+  IF category_count > 0 THEN
+    -- There's existing data - let's try to migrate it or clear it
+    -- Option 1: Try to find a matching school for each category
+    -- Option 2: If no matching school, delete the orphaned categories
+
+    -- Delete categories where client_id doesn't match any school's client_id
+    DELETE FROM program_categories pc
+    WHERE NOT EXISTS (
+      SELECT 1 FROM schools s WHERE s.client_id = pc.client_id
+    );
+
+    -- For remaining categories, update to use the first school of that client
+    UPDATE program_categories pc
+    SET client_id = (
+      SELECT s.id
+      FROM schools s
+      WHERE s.client_id = pc.client_id
+      LIMIT 1
+    )
+    WHERE EXISTS (
+      SELECT 1 FROM schools s WHERE s.client_id = pc.client_id
+    );
+
+  END IF;
+END $$;
+
 -- Drop existing foreign key constraint
 ALTER TABLE program_categories DROP CONSTRAINT IF EXISTS program_categories_client_id_fkey;
 
@@ -44,6 +78,37 @@ COMMENT ON TABLE program_categories IS 'Program categories for grouping programs
 -- ============================================================================
 -- 3. REFACTOR QUIZ STAGES TO SCHOOL SCOPE
 -- ============================================================================
+
+-- Handle existing quiz_stages data
+DO $$
+DECLARE
+  stage_count INTEGER;
+BEGIN
+  SELECT COUNT(*) INTO stage_count FROM quiz_stages;
+
+  IF stage_count > 0 THEN
+    -- Delete stages where school_id is NULL and client_id doesn't match any school
+    DELETE FROM quiz_stages qs
+    WHERE qs.school_id IS NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM schools s WHERE s.client_id = qs.client_id
+    );
+
+    -- For stages with NULL school_id, assign them to the first school of their client
+    UPDATE quiz_stages qs
+    SET school_id = (
+      SELECT s.id
+      FROM schools s
+      WHERE s.client_id = qs.client_id
+      LIMIT 1
+    )
+    WHERE qs.school_id IS NULL
+    AND EXISTS (
+      SELECT 1 FROM schools s WHERE s.client_id = qs.client_id
+    );
+
+  END IF;
+END $$;
 
 -- Remove client_id column (stages are now school-only)
 ALTER TABLE quiz_stages DROP COLUMN IF EXISTS client_id CASCADE;
