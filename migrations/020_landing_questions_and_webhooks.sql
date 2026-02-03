@@ -11,7 +11,7 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS landing_page_questions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+  school_id TEXT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
   question_text TEXT NOT NULL,
   question_type TEXT NOT NULL CHECK (question_type IN ('text', 'textarea', 'select', 'radio', 'checkbox', 'number', 'tel', 'email')),
   help_text TEXT,
@@ -51,7 +51,7 @@ COMMENT ON TABLE landing_page_question_options IS 'Answer options for select/rad
 
 CREATE TABLE IF NOT EXISTS webhook_configs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+  school_id TEXT NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
   webhook_url TEXT NOT NULL,
   events TEXT[] NOT NULL DEFAULT ARRAY['submission_created', 'quiz_started', 'stage_completed', 'submission_updated', 'quiz_completed'],
   headers JSONB DEFAULT '{}'::jsonb,
@@ -104,7 +104,7 @@ ALTER TABLE submissions ADD COLUMN IF NOT EXISTS quiz_progress JSONB DEFAULT '{
 }'::jsonb;
 
 -- Add final recommendation
-ALTER TABLE submissions ADD COLUMN IF NOT EXISTS recommended_program_id UUID REFERENCES programs(id) ON DELETE SET NULL;
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS recommended_program_id TEXT REFERENCES programs(id) ON DELETE SET NULL;
 
 -- Add category and program scores
 ALTER TABLE submissions ADD COLUMN IF NOT EXISTS category_scores JSONB DEFAULT '{}'::jsonb;
