@@ -39,6 +39,7 @@ export function SuperAdminLandingQuestionsPage({ schoolId }: SuperAdminLandingQu
     crmFieldName: ""
   });
   const [saving, setSaving] = useState(false);
+  const [editingOption, setEditingOption] = useState<{ id: string; text: string; value: string } | null>(null);
 
   useEffect(() => {
     loadQuestions();
@@ -161,7 +162,7 @@ export function SuperAdminLandingQuestionsPage({ schoolId }: SuperAdminLandingQu
         body: JSON.stringify({
           optionText,
           optionValue: optionText,
-          displayOrder: 0
+          displayOrder: editingQuestion ? editingQuestion.options.length : 0
         })
       });
 
@@ -171,6 +172,28 @@ export function SuperAdminLandingQuestionsPage({ schoolId }: SuperAdminLandingQu
       }
 
       showMessage("success", "Option added successfully");
+      loadQuestions();
+    } catch (error) {
+      showMessage("error", (error as Error).message);
+    }
+  };
+
+  const handleUpdateOption = async (optionId: string, optionText: string, optionValue: string) => {
+    try {
+      const res = await fetch(`/api/super/landing-question-options/${optionId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ optionText, optionValue })
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to update option");
+      }
+
+      showMessage("success", "Option updated successfully");
+      setEditingOption(null);
       loadQuestions();
     } catch (error) {
       showMessage("error", (error as Error).message);
@@ -338,31 +361,105 @@ export function SuperAdminLandingQuestionsPage({ schoolId }: SuperAdminLandingQu
 
                   {needsOptions && editingQuestion && (
                     <div className="super-admin__field">
-                      <label className="super-admin__label">Options</label>
+                      <label className="super-admin__label">Options ({editingQuestion.options.length})</label>
                       <div style={{ marginBottom: "1rem" }}>
-                        {editingQuestion.options.map((option) => (
-                          <div
-                            key={option.id}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.5rem",
-                              padding: "0.5rem",
-                              border: "1px solid var(--color-border)",
-                              borderRadius: "4px",
-                              marginBottom: "0.5rem"
-                            }}
-                          >
-                            <span style={{ flex: 1 }}>{option.optionText}</span>
-                            <button
-                              className="super-admin__btn super-admin__btn--ghost"
-                              onClick={() => handleDeleteOption(option.id)}
-                              style={{ padding: "0.25rem 0.5rem", fontSize: "0.875rem" }}
-                            >
-                              Delete
-                            </button>
+                        {editingQuestion.options.length === 0 ? (
+                          <div style={{ padding: "1rem", background: "#f8f9fa", borderRadius: "4px", textAlign: "center", color: "#666" }}>
+                            No options yet. Click "+ Add Option" to create one.
                           </div>
-                        ))}
+                        ) : (
+                          <div style={{ border: "1px solid var(--color-border)", borderRadius: "4px", overflow: "hidden" }}>
+                            {editingQuestion.options.map((option, index) => (
+                              <div
+                                key={option.id}
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "auto 1fr 1fr auto",
+                                  gap: "0.75rem",
+                                  padding: "0.75rem",
+                                  borderBottom: index < editingQuestion.options.length - 1 ? "1px solid var(--color-border)" : "none",
+                                  alignItems: "center",
+                                  background: editingOption?.id === option.id ? "#f8f9fa" : "white"
+                                }}
+                              >
+                                <div style={{ fontSize: "0.875rem", color: "#666", fontWeight: 500 }}>
+                                  #{index + 1}
+                                </div>
+                                {editingOption?.id === option.id ? (
+                                  <>
+                                    <div>
+                                      <label style={{ fontSize: "0.75rem", color: "#666", display: "block", marginBottom: "0.25rem" }}>
+                                        Display Text
+                                      </label>
+                                      <input
+                                        className="super-admin__input"
+                                        style={{ fontSize: "0.875rem", padding: "0.375rem" }}
+                                        value={editingOption.text}
+                                        onChange={(e) => setEditingOption({ ...editingOption, text: e.target.value })}
+                                        placeholder="Yes"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label style={{ fontSize: "0.75rem", color: "#666", display: "block", marginBottom: "0.25rem" }}>
+                                        Value (Database)
+                                      </label>
+                                      <input
+                                        className="super-admin__input"
+                                        style={{ fontSize: "0.875rem", padding: "0.375rem" }}
+                                        value={editingOption.value}
+                                        onChange={(e) => setEditingOption({ ...editingOption, value: e.target.value })}
+                                        placeholder="yes"
+                                      />
+                                    </div>
+                                    <div style={{ display: "flex", gap: "0.25rem" }}>
+                                      <button
+                                        className="super-admin__btn super-admin__btn--primary"
+                                        onClick={() => handleUpdateOption(editingOption.id, editingOption.text, editingOption.value)}
+                                        style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem" }}
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        className="super-admin__btn super-admin__btn--ghost"
+                                        onClick={() => setEditingOption(null)}
+                                        style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem" }}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div>
+                                      <div style={{ fontSize: "0.875rem", fontWeight: 500 }}>{option.optionText}</div>
+                                      <div style={{ fontSize: "0.75rem", color: "#666", marginTop: "0.125rem" }}>Display text</div>
+                                    </div>
+                                    <div>
+                                      <div style={{ fontSize: "0.875rem", fontFamily: "monospace", color: "#0066cc" }}>{option.optionValue}</div>
+                                      <div style={{ fontSize: "0.75rem", color: "#666", marginTop: "0.125rem" }}>Database value</div>
+                                    </div>
+                                    <div style={{ display: "flex", gap: "0.25rem" }}>
+                                      <button
+                                        className="super-admin__btn super-admin__btn--ghost"
+                                        onClick={() => setEditingOption({ id: option.id, text: option.optionText, value: option.optionValue })}
+                                        style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem" }}
+                                      >
+                                        Edit
+                                      </button>
+                                      <button
+                                        className="super-admin__btn super-admin__btn--ghost"
+                                        onClick={() => handleDeleteOption(option.id)}
+                                        style={{ padding: "0.375rem 0.75rem", fontSize: "0.75rem", color: "#d9534f" }}
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <button
                         className="super-admin__btn super-admin__btn--ghost"
@@ -370,6 +467,9 @@ export function SuperAdminLandingQuestionsPage({ schoolId }: SuperAdminLandingQu
                       >
                         + Add Option
                       </button>
+                      <span className="super-admin__help" style={{ display: "block", marginTop: "0.5rem" }}>
+                        Options are the choices users can select. Display text is what users see, database value is what gets stored.
+                      </span>
                     </div>
                   )}
 

@@ -155,6 +155,7 @@ export function FormEngine({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "error" | "success" } | null>(null);
   const [honeypot, setHoneypot] = useState("");
   const [submissionId, setSubmissionId] = useState<string | null>(null);
 
@@ -306,6 +307,12 @@ export function FormEngine({
 
   const updateLandingAnswer = (id: string, value: string | string[]) => {
     setLandingAnswers((prev) => ({ ...prev, [id]: value }));
+  };
+
+  const showToast = (message: string, type: "error" | "success" = "error") => {
+    setToast({ message, type });
+    setError(null); // Clear inline error
+    setTimeout(() => setToast(null), 5000); // Auto-hide after 5 seconds
   };
 
   const updateQuizAnswer = (questionId: string, value: string | string[]) => {
@@ -638,18 +645,18 @@ export function FormEngine({
     // Step 0: Contact info submission (creates CRM lead)
     if (isStartStep) {
       if (!consentChecked) {
-        setError("Please provide consent to continue.");
+        showToast("Please provide consent to continue.");
         return;
       }
 
       if (!contact.firstName || !contact.lastName || !contact.email || !contact.phone) {
-        setError("Please complete all required contact fields.");
+        showToast("Please complete all required contact fields.");
         return;
       }
 
       for (const question of visibleLeadQuestions) {
         if (question.required && isAnswerMissing(question)) {
-          setError("Please answer all required questions to continue.");
+          showToast("Please answer all required questions to continue.");
           return;
         }
       }
@@ -659,7 +666,7 @@ export function FormEngine({
         if (question.isRequired) {
           const answer = landingAnswers[question.id];
           if (!answer || (Array.isArray(answer) && answer.length === 0) || (typeof answer === "string" && answer.trim() === "")) {
-            setError(`Please answer: ${question.questionText}`);
+            showToast(`Please answer: ${question.questionText}`);
             return;
           }
         }
@@ -730,7 +737,7 @@ export function FormEngine({
 
         setCurrentStep(1);
       } catch (submitError) {
-        setError((submitError as Error).message);
+        showToast((submitError as Error).message);
       } finally {
         setIsSubmitting(false);
       }
@@ -741,12 +748,12 @@ export function FormEngine({
     // Quiz steps: Update CRM lead with quiz answer
     if (isInQuizStep && currentQuizQuestion) {
       if (isQuizAnswerMissing(currentQuizQuestion)) {
-        setError("Please answer this question to continue.");
+        showToast("Please answer this question to continue.");
         return;
       }
 
       if (!submissionId) {
-        setError("Missing submission id. Please restart.");
+        showToast("Missing submission id. Please restart.");
         return;
       }
 
@@ -806,7 +813,7 @@ export function FormEngine({
           setCurrentStep((prev) => Math.min(prev + 1, totalSteps - 1));
         }
       } catch (submitError) {
-        setError((submitError as Error).message);
+        showToast((submitError as Error).message);
       } finally {
         setIsSubmitting(false);
       }
@@ -852,6 +859,31 @@ export function FormEngine({
 
   return (
     <div className="form-card">
+      {toast && (
+        <div
+          style={{
+            position: "fixed",
+            top: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: toast.type === "error" ? "#d9534f" : "#5cb85c",
+            color: "white",
+            padding: "12px 24px",
+            borderRadius: "8px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            zIndex: 10000,
+            maxWidth: "90%",
+            width: "auto",
+            minWidth: "300px",
+            textAlign: "center",
+            fontSize: "14px",
+            fontWeight: 500,
+            animation: "slideDown 0.3s ease-out"
+          }}
+        >
+          {toast.message}
+        </div>
+      )}
       {ctaText && <h3>{ctaText}</h3>}
       <div className="progress">
         <span style={{ width: `${progress}%` }} />
@@ -873,39 +905,55 @@ export function FormEngine({
           />
           <div className="field-grid">
             <div className="field">
-              <label className="field-label">First name</label>
+              <label className="field-label">
+                First name
+                <span style={{ color: "#d9534f" }}> *</span>
+              </label>
               <input
                 className="field-input"
                 type="text"
                 value={contact.firstName}
                 onChange={(event) => setContact({ ...contact, firstName: event.target.value })}
+                required
               />
             </div>
             <div className="field">
-              <label className="field-label">Last name</label>
+              <label className="field-label">
+                Last name
+                <span style={{ color: "#d9534f" }}> *</span>
+              </label>
               <input
                 className="field-input"
                 type="text"
                 value={contact.lastName}
                 onChange={(event) => setContact({ ...contact, lastName: event.target.value })}
+                required
               />
             </div>
             <div className="field">
-              <label className="field-label">Email</label>
+              <label className="field-label">
+                Email
+                <span style={{ color: "#d9534f" }}> *</span>
+              </label>
               <input
                 className="field-input"
                 type="email"
                 value={contact.email}
                 onChange={(event) => setContact({ ...contact, email: event.target.value })}
+                required
               />
             </div>
             <div className="field">
-              <label className="field-label">Phone</label>
+              <label className="field-label">
+                Phone
+                <span style={{ color: "#d9534f" }}> *</span>
+              </label>
               <input
                 className="field-input"
                 type="tel"
                 value={contact.phone}
                 onChange={(event) => setContact({ ...contact, phone: event.target.value })}
+                required
               />
             </div>
           </div>

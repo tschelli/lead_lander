@@ -933,9 +933,9 @@ app.get("/api/public/schools/:schoolId/quiz", async (req, res) => {
       })
       .sort((a, b) => a.displayOrder - b.displayOrder);
 
-    // Get programs that use quiz routing
+    // Get all programs for this school (all programs use school master quiz)
     const programs = config.programs
-      .filter((p) => p.schoolId === schoolId && p.useQuizRouting)
+      .filter((p) => p.schoolId === schoolId)
       .map((p) => ({
         id: p.id,
         name: p.name,
@@ -966,9 +966,9 @@ app.post("/api/public/schools/:schoolId/quiz/recommend", async (req, res) => {
 
     const config = await getConfigForClient(school.client_id);
 
-    // Get all programs for this school that use quiz routing
+    // Get all programs for this school (all programs use school master quiz)
     const programs = config.programs.filter(
-      (p) => p.schoolId === schoolId && p.useQuizRouting
+      (p) => p.schoolId === schoolId
     );
 
     const programScores: Record<string, number> = {};
@@ -2636,9 +2636,9 @@ app.post(
         return res.status(400).json({ error: "Invalid answers format" });
       }
 
-      // Get all programs for this school that use quiz routing
+      // Get all programs for this school (all programs use school master quiz)
       const programsResult = await pool.query(
-        "SELECT id, name FROM programs WHERE school_id = $1 AND client_id = $2 AND use_quiz_routing = true",
+        "SELECT id, name FROM programs WHERE school_id = $1 AND client_id = $2",
         [school.id, school.client_id]
       );
 
