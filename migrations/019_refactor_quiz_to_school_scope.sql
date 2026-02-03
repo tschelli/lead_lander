@@ -6,12 +6,27 @@
 BEGIN;
 
 -- ============================================================================
--- 1. DROP OLD QUIZ BUILDER TABLES
+-- 1. DROP OLD QUIZ BUILDER TABLES (ONLY IF NOT ENHANCED BY MIGRATION 018)
 -- ============================================================================
 
--- Drop old quiz tables from migration 014 (simple quiz builder)
-DROP TABLE IF EXISTS quiz_answer_options CASCADE;
-DROP TABLE IF EXISTS quiz_questions CASCADE;
+-- Check if quiz_questions has the stage_id column (added in migration 018)
+-- If it doesn't have stage_id, it's the old table from migration 014 and should be dropped
+-- If it DOES have stage_id, keep it (it's the enhanced table we want to modify)
+DO $$
+BEGIN
+  -- Check if quiz_questions exists
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'quiz_questions') THEN
+    -- Check if it has stage_id column (from migration 018)
+    IF NOT EXISTS (
+      SELECT FROM information_schema.columns
+      WHERE table_name = 'quiz_questions' AND column_name = 'stage_id'
+    ) THEN
+      -- Old table without enhancements - drop it
+      DROP TABLE IF EXISTS quiz_answer_options CASCADE;
+      DROP TABLE IF EXISTS quiz_questions CASCADE;
+    END IF;
+  END IF;
+END $$;
 
 -- ============================================================================
 -- 2. REFACTOR PROGRAM CATEGORIES TO SCHOOL SCOPE
@@ -127,30 +142,40 @@ CREATE INDEX idx_quiz_stages_order ON quiz_stages(school_id, display_order) WHER
 COMMENT ON COLUMN quiz_stages.school_id IS 'School that owns this stage (required)';
 
 -- ============================================================================
--- 4. REFACTOR QUIZ QUESTIONS TO SCHOOL SCOPE
+-- 4. REFACTOR QUIZ QUESTIONS TO SCHOOL SCOPE (IF TABLE EXISTS)
 -- ============================================================================
 
 -- Note: quiz_questions already has both client_id and school_id from migration 018
 -- We'll keep both for now but make school_id the primary scope
 
--- Make school_id NOT NULL if it isn't already
--- (Some existing questions might not have school_id, so we'll need to handle this carefully)
--- For now, we'll just ensure the index is correct
-CREATE INDEX IF NOT EXISTS idx_quiz_questions_school ON quiz_questions(school_id) WHERE school_id IS NOT NULL;
+DO $$
+BEGIN
+  -- Only work with quiz_questions if it exists
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'quiz_questions') THEN
+    -- Create index if table exists
+    CREATE INDEX IF NOT EXISTS idx_quiz_questions_school ON quiz_questions(school_id) WHERE school_id IS NOT NULL;
 
--- Update comment
-COMMENT ON TABLE quiz_questions IS 'Quiz questions belonging to stages - primarily scoped to school';
+    -- Update comment
+    COMMENT ON TABLE quiz_questions IS 'Quiz questions belonging to stages - primarily scoped to school';
+  END IF;
+END $$;
 
 -- ============================================================================
--- 5. UPDATE QUIZ SESSIONS TO ENSURE SCHOOL SCOPE
+-- 5. UPDATE QUIZ SESSIONS TO ENSURE SCHOOL SCOPE (IF TABLE EXISTS)
 -- ============================================================================
 
--- quiz_sessions already has school_id as NOT NULL, which is correct
--- Just verify the index exists
-CREATE INDEX IF NOT EXISTS idx_quiz_sessions_school ON quiz_sessions(school_id);
+DO $$
+BEGIN
+  -- Only work with quiz_sessions if it exists (from migration 018)
+  IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'quiz_sessions') THEN
+    -- quiz_sessions already has school_id as NOT NULL, which is correct
+    -- Just verify the index exists
+    CREATE INDEX IF NOT EXISTS idx_quiz_sessions_school ON quiz_sessions(school_id);
 
--- Remove client_id if it exists (sessions should only reference school)
-ALTER TABLE quiz_sessions DROP COLUMN IF EXISTS client_id CASCADE;
+    -- Remove client_id if it exists (sessions should only reference school)
+    ALTER TABLE quiz_sessions DROP COLUMN IF EXISTS client_id CASCADE;
+  END IF;
+END $$;
 
 -- ============================================================================
 -- 6. ADD DISQUALIFICATION CONFIG TO SCHOOLS
