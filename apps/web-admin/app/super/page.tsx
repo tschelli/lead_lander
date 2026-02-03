@@ -23,6 +23,12 @@ type ClientsResponse = {
         id: string;
         slug: string;
         name: string;
+        category_id?: string | null;
+      }>;
+      categories: Array<{
+        id: string;
+        name: string;
+        slug: string;
       }>;
     }>;
   }>;
