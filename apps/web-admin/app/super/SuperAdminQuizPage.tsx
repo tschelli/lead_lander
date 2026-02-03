@@ -6,7 +6,7 @@ import "./super-admin.css";
 
 type ProgramCategory = {
   id: string;
-  clientId: string;
+  schoolId: string;
   name: string;
   slug: string;
   displayOrder: number;
@@ -18,8 +18,7 @@ type ProgramCategory = {
 
 type QuizStage = {
   id: string;
-  clientId: string;
-  schoolId?: string;
+  schoolId: string;
   categoryId?: string;
   categoryName?: string;
   name: string;
@@ -33,10 +32,10 @@ type QuizStage = {
 };
 
 type SuperAdminQuizPageProps = {
-  clientId: string;
+  schoolId: string;
 };
 
-export function SuperAdminQuizPage({ clientId }: SuperAdminQuizPageProps) {
+export function SuperAdminQuizPage({ schoolId }: SuperAdminQuizPageProps) {
   const [categories, setCategories] = useState<ProgramCategory[]>([]);
   const [stages, setStages] = useState<QuizStage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,14 +45,14 @@ export function SuperAdminQuizPage({ clientId }: SuperAdminQuizPageProps) {
 
   useEffect(() => {
     loadData();
-  }, [clientId]);
+  }, [schoolId]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const [categoriesRes, stagesRes] = await Promise.all([
-        fetch(`/api/super/clients/${clientId}/categories`, { credentials: "include" }),
-        fetch(`/api/super/clients/${clientId}/quiz/stages`, { credentials: "include" })
+        fetch(`/api/super/schools/${schoolId}/categories`, { credentials: "include" }),
+        fetch(`/api/super/schools/${schoolId}/quiz/stages`, { credentials: "include" })
       ]);
 
       if (categoriesRes.ok) {
@@ -186,8 +185,8 @@ function CategoryManager({
     setSaving(true);
     try {
       const url = editingCategory
-        ? `/api/super/clients/${clientId}/categories/${editingCategory.id}`
-        : `/api/super/clients/${clientId}/categories`;
+        ? `/api/super/schools/${schoolId}/categories/${editingCategory.id}`
+        : `/api/super/schools/${schoolId}/categories`;
 
       const res = await fetch(url, {
         method: editingCategory ? "PATCH" : "POST",
@@ -216,7 +215,7 @@ function CategoryManager({
     if (!confirm("Are you sure you want to delete this category?")) return;
 
     try {
-      const res = await fetch(`/api/super/clients/${clientId}/categories/${categoryId}`, {
+      const res = await fetch(`/api/super/schools/${schoolId}/categories/${categoryId}`, {
         method: "DELETE",
         credentials: "include"
       });
@@ -407,8 +406,8 @@ function StageManager({
     setSaving(true);
     try {
       const url = editingStage
-        ? `/api/super/clients/${clientId}/quiz/stages/${editingStage.id}`
-        : `/api/super/clients/${clientId}/quiz/stages`;
+        ? `/api/super/schools/${schoolId}/quiz/stages/${editingStage.id}`
+        : `/api/super/schools/${schoolId}/quiz/stages`;
 
       const payload = {
         ...formData,
@@ -442,7 +441,7 @@ function StageManager({
     if (!confirm("Are you sure you want to delete this stage?")) return;
 
     try {
-      const res = await fetch(`/api/super/clients/${clientId}/quiz/stages/${stageId}`, {
+      const res = await fetch(`/api/super/schools/${schoolId}/quiz/stages/${stageId}`, {
         method: "DELETE",
         credentials: "include"
       });

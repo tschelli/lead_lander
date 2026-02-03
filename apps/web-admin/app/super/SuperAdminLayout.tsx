@@ -359,7 +359,8 @@ function EntityDetailPanel({
             schoolName: school.name,
             clientName: client.name,
             clientId: client.id,
-            schoolId: school.id
+            schoolId: school.id,
+            categories: school.categories || []
           };
           break;
         }
@@ -429,7 +430,8 @@ function EntityDetailPanel({
           crmConnectionId: detail.crmConnectionId,
           branding: detail.branding,
           compliance: detail.compliance,
-          thankYou: detail.thankYou
+          thankYou: detail.thankYou,
+          disqualificationConfig: detail.disqualificationConfig
         };
       } else if (entity.type === "program") {
         url = `/api/super/clients/${entityDetails.clientId}/programs/${entityDetails.id}`;
@@ -438,7 +440,7 @@ function EntityDetailPanel({
           slug: detail.slug,
           availableCampuses: detail.availableCampuses || [],
           templateType: detail.templateType || "full",
-          useQuizRouting: Boolean(detail.useQuizRouting)
+          categoryId: detail.category_id || null
         };
       }
 
@@ -493,7 +495,8 @@ function EntityDetailPanel({
             crmConnectionId: nextDetail.crm_connection_id,
             thankYou: nextDetail.thank_you,
             branding: nextDetail.branding || {},
-            compliance: nextDetail.compliance || {}
+            compliance: nextDetail.compliance || {},
+            disqualificationConfig: nextDetail.disqualification_config || {}
           };
         }
         if (entity.type === "program" && nextDetail) {
@@ -501,7 +504,7 @@ function EntityDetailPanel({
             ...nextDetail,
             availableCampuses: nextDetail.available_campuses || [],
             templateType: nextDetail.template_type,
-            useQuizRouting: nextDetail.use_quiz_routing
+            category_id: nextDetail.category_id
           };
         }
 
@@ -545,15 +548,31 @@ function EntityDetailPanel({
         </h2>
       </div>
       <div className="super-admin__panel-tabs">
-        {(["overview", "config", "quiz", "audit"] as const).map((tab) => (
-          <button
-            key={tab}
-            className={`super-admin__tab ${detailTab === tab ? "is-active" : ""}`}
-            onClick={() => setDetailTab(tab)}
-          >
-            {tab === "config" ? "Config" : tab === "quiz" ? "Quiz" : tab === "audit" ? "Audit" : "Overview"}
-          </button>
-        ))}
+        {(["overview", "config", "quiz", "audit"] as const)
+          .filter((tab) => {
+            // Client: Overview and Audit only
+            if (entity.type === "client") {
+              return tab === "overview" || tab === "audit";
+            }
+            // School: Overview, Quiz, and Audit
+            if (entity.type === "school") {
+              return tab === "overview" || tab === "quiz" || tab === "audit";
+            }
+            // Program: Overview, Config, and Audit
+            if (entity.type === "program") {
+              return tab === "overview" || tab === "config" || tab === "audit";
+            }
+            return true;
+          })
+          .map((tab) => (
+            <button
+              key={tab}
+              className={`super-admin__tab ${detailTab === tab ? "is-active" : ""}`}
+              onClick={() => setDetailTab(tab)}
+            >
+              {tab === "config" ? "Config" : tab === "quiz" ? "Quiz" : tab === "audit" ? "Audit" : "Overview"}
+            </button>
+          ))}
       </div>
       <div className="super-admin__panel-content">
         {detailTab === "overview" && entityDetails && (
@@ -607,8 +626,7 @@ function EntityDetailPanel({
                               nextDetail = {
                                 ...nextDetail,
                                 availableCampuses: nextDetail.available_campuses || [],
-                                templateType: nextDetail.template_type,
-                                useQuizRouting: nextDetail.use_quiz_routing
+                                templateType: nextDetail.template_type
                               };
                             }
                             setDetail(nextDetail);
@@ -734,6 +752,22 @@ function EntityDetailPanel({
                           <div className="super-admin__field">
                             <label className="super-admin__label">Client</label>
                             <div className="super-admin__value">{entityDetails.clientName}</div>
+                          </div>
+                          <div className="super-admin__field">
+                            <label className="super-admin__label">Program Category</label>
+                            <select
+                              className="super-admin__input"
+                              value={detail.category_id || ""}
+                              onChange={(event) => updateDetail({ category_id: event.target.value || null })}
+                            >
+                              <option value="">No Category</option>
+                              {(entityDetails.categories || []).map((cat: any) => (
+                                <option key={cat.id} value={cat.id}>
+                                  {cat.name} ({cat.slug})
+                                </option>
+                              ))}
+                            </select>
+                            <span className="super-admin__help">Assign this program to a category for quiz routing</span>
                           </div>
                         </>
                       )}
@@ -957,6 +991,86 @@ function EntityDetailPanel({
                     </div>
                   )}
 
+                  {/* Disqualification Configuration - Schools Only */}
+                  {entity.type === "school" && (
+                    <div className="super-admin__section">
+                      <h3 className="super-admin__section-title">Disqualification Page</h3>
+                      <div className="super-admin__section-content">
+                        <div className="super-admin__field">
+                          <label className="super-admin__label">Headline</label>
+                          <input
+                            className="super-admin__input"
+                            value={detail.disqualificationConfig?.headline || ""}
+                            onChange={(event) =>
+                              updateDetail({
+                                disqualificationConfig: {
+                                  ...(detail.disqualificationConfig || {}),
+                                  headline: event.target.value
+                                }
+                              })
+                            }
+                            placeholder="Thank you for your interest"
+                          />
+                        </div>
+
+                        <div className="super-admin__field">
+                          <label className="super-admin__label">Subheadline</label>
+                          <input
+                            className="super-admin__input"
+                            value={detail.disqualificationConfig?.subheadline || ""}
+                            onChange={(event) =>
+                              updateDetail({
+                                disqualificationConfig: {
+                                  ...(detail.disqualificationConfig || {}),
+                                  subheadline: event.target.value
+                                }
+                              })
+                            }
+                            placeholder="Unfortunately, we are unable to process your application at this time"
+                          />
+                        </div>
+
+                        <div className="super-admin__field">
+                          <label className="super-admin__label">Message</label>
+                          <textarea
+                            className="super-admin__textarea"
+                            rows={3}
+                            value={detail.disqualificationConfig?.text || ""}
+                            onChange={(event) =>
+                              updateDetail({
+                                disqualificationConfig: {
+                                  ...(detail.disqualificationConfig || {}),
+                                  text: event.target.value
+                                }
+                              })
+                            }
+                            placeholder="Please contact us if you have any questions."
+                          />
+                        </div>
+
+                        <div className="super-admin__field">
+                          <label className="super-admin__label">Link URL (Optional)</label>
+                          <input
+                            className="super-admin__input"
+                            value={detail.disqualificationConfig?.link || ""}
+                            onChange={(event) =>
+                              updateDetail({
+                                disqualificationConfig: {
+                                  ...(detail.disqualificationConfig || {}),
+                                  link: event.target.value
+                                }
+                              })
+                            }
+                            placeholder="https://example.com/contact"
+                          />
+                          <span className="super-admin__help">
+                            Optional link for disqualified users to contact support
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Program Configuration - Programs Only */}
                   {entity.type === "program" && (
                     <div className="super-admin__section">
@@ -972,18 +1086,6 @@ function EntityDetailPanel({
                             <option value="full">Full - All sections visible</option>
                             <option value="minimal">Minimal - Hero and form only</option>
                           </select>
-                        </div>
-
-                        <div className="super-admin__field">
-                          <label className="super-admin__checkbox-label">
-                            <input
-                              type="checkbox"
-                              checked={Boolean(detail.useQuizRouting)}
-                              onChange={(event) => updateDetail({ useQuizRouting: event.target.checked })}
-                            />
-                            <span>Enable Quiz Routing</span>
-                          </label>
-                          <span className="super-admin__help">Route leads to campuses based on quiz answers</span>
                         </div>
 
                         <div className="super-admin__field">
@@ -1018,17 +1120,8 @@ function EntityDetailPanel({
           </div>
         )}
 
-        {detailTab === "quiz" && (
-          <>
-            {entity.type === "client" && entityDetails && (
-              <SuperAdminQuizPage clientId={entityDetails.id} />
-            )}
-            {entity.type !== "client" && schoolContext && (
-              <div className="super-admin__config-wrapper">
-                <QuizBuilderPage schoolSlug={schoolContext.school.slug} programs={schoolContext.programs} />
-              </div>
-            )}
-          </>
+        {detailTab === "quiz" && entity.type === "school" && entityDetails && (
+          <SuperAdminQuizPage schoolId={entityDetails.id} />
         )}
 
         {detailTab === "audit" && (

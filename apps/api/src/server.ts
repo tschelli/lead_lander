@@ -173,7 +173,8 @@ const SuperSchoolUpdateSchema = z.object({
   branding: z.record(z.any()).optional(),
   compliance: z.record(z.any()).optional(),
   crmConnectionId: z.string().min(1).optional(),
-  thankYou: z.record(z.any()).optional()
+  thankYou: z.record(z.any()).optional(),
+  disqualificationConfig: z.record(z.any()).optional()
 });
 
 const SuperProgramCreateSchema = z.object({
@@ -188,7 +189,7 @@ const SuperProgramUpdateSchema = z.object({
   name: z.string().min(1).optional(),
   availableCampuses: z.array(z.string()).optional(),
   templateType: z.enum(["minimal", "full"]).optional(),
-  useQuizRouting: z.boolean().optional()
+  categoryId: z.string().uuid().nullable().optional()
 });
 
 const SuperAdminUserCreateSchema = z.object({
@@ -2517,22 +2518,30 @@ app.get("/api/super/tree", async (req, res) => {
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
-    const [clientsResult, schoolsResult, programsResult] = await Promise.all([
+    const [clientsResult, schoolsResult, programsResult, categoriesResult] = await Promise.all([
       pool.query("SELECT id, name FROM clients ORDER BY name"),
       pool.query("SELECT id, client_id, slug, name FROM schools ORDER BY name"),
-      pool.query("SELECT id, client_id, school_id, slug, name FROM programs ORDER BY name")
+      pool.query("SELECT id, client_id, school_id, slug, name, category_id FROM programs ORDER BY name"),
+      pool.query("SELECT id, school_id, name, slug FROM program_categories ORDER BY display_order, name")
     ]);
 
-    const programsBySchool = new Map<string, Array<{ id: string; slug: string; name: string }>>();
+    const categoriesBySchool = new Map<string, Array<{ id: string; name: string; slug: string }>>();
+    for (const row of categoriesResult.rows) {
+      const list = categoriesBySchool.get(row.school_id) || [];
+      list.push({ id: row.id, name: row.name, slug: row.slug });
+      categoriesBySchool.set(row.school_id, list);
+    }
+
+    const programsBySchool = new Map<string, Array<{ id: string; slug: string; name: string; category_id: string | null }>>();
     for (const row of programsResult.rows) {
       const list = programsBySchool.get(row.school_id) || [];
-      list.push({ id: row.id, slug: row.slug, name: row.name });
+      list.push({ id: row.id, slug: row.slug, name: row.name, category_id: row.category_id });
       programsBySchool.set(row.school_id, list);
     }
 
     const schoolsByClient = new Map<
       string,
-      Array<{ id: string; slug: string; name: string; programs: Array<{ id: string; slug: string; name: string }> }>
+      Array<{ id: string; slug: string; name: string; programs: Array<{ id: string; slug: string; name: string; category_id: string | null }>; categories: Array<{ id: string; name: string; slug: string }> }>
     >();
     for (const row of schoolsResult.rows) {
       const list = schoolsByClient.get(row.client_id) || [];
@@ -2540,7 +2549,8 @@ app.get("/api/super/tree", async (req, res) => {
         id: row.id,
         slug: row.slug,
         name: row.name,
-        programs: programsBySchool.get(row.id) || []
+        programs: programsBySchool.get(row.id) || [],
+        categories: categoriesBySchool.get(row.id) || []
       });
       schoolsByClient.set(row.client_id, list);
     }
@@ -2709,7 +2719,7 @@ app.get("/api/super/clients/:clientId/schools/:schoolId", async (req, res) => {
 
     const { clientId, schoolId } = req.params;
     const result = await pool.query(
-      `SELECT id, client_id, slug, name, branding, compliance, crm_connection_id, thank_you
+      `SELECT id, client_id, slug, name, branding, compliance, crm_connection_id, thank_you, disqualification_config
        FROM schools WHERE id = $1 AND client_id = $2`,
       [schoolId, clientId]
     );
@@ -2738,7 +2748,7 @@ app.patch("/api/super/clients/:clientId/schools/:schoolId", async (req, res) => 
     }
 
     const existing = await pool.query(
-      `SELECT slug, name, branding, compliance, crm_connection_id, thank_you
+      `SELECT slug, name, branding, compliance, crm_connection_id, thank_you, disqualification_config
        FROM schools WHERE id = $1 AND client_id = $2`,
       [schoolId, clientId]
     );
@@ -2753,7 +2763,8 @@ app.patch("/api/super/clients/:clientId/schools/:schoolId", async (req, res) => 
       branding: parseResult.data.branding ?? current.branding,
       compliance: parseResult.data.compliance ?? current.compliance,
       crmConnectionId: parseResult.data.crmConnectionId ?? current.crm_connection_id,
-      thankYou: parseResult.data.thankYou ?? current.thank_you
+      thankYou: parseResult.data.thankYou ?? current.thank_you,
+      disqualificationConfig: parseResult.data.disqualificationConfig ?? current.disqualification_config
     };
 
     await pool.query(
@@ -2764,8 +2775,9 @@ app.patch("/api/super/clients/:clientId/schools/:schoolId", async (req, res) => 
            compliance = $4,
            crm_connection_id = $5,
            thank_you = $6,
-           updated_at = $7
-       WHERE id = $8 AND client_id = $9`,
+           disqualification_config = $7,
+           updated_at = $8
+       WHERE id = $9 AND client_id = $10`,
       [
         next.slug,
         next.name,
@@ -2773,6 +2785,7 @@ app.patch("/api/super/clients/:clientId/schools/:schoolId", async (req, res) => 
         next.compliance,
         next.crmConnectionId,
         next.thankYou,
+        next.disqualificationConfig,
         new Date(),
         schoolId,
         clientId
@@ -2854,7 +2867,7 @@ app.get("/api/super/clients/:clientId/programs/:programId", async (req, res) => 
 
     const { clientId, programId } = req.params;
     const result = await pool.query(
-      `SELECT id, client_id, school_id, slug, name, available_campuses, template_type, use_quiz_routing
+      `SELECT id, client_id, school_id, slug, name, available_campuses, template_type, category_id
        FROM programs WHERE id = $1 AND client_id = $2`,
       [programId, clientId]
     );
@@ -2883,7 +2896,7 @@ app.patch("/api/super/clients/:clientId/programs/:programId", async (req, res) =
     }
 
     const existing = await pool.query(
-      `SELECT slug, name, available_campuses, template_type, use_quiz_routing
+      `SELECT slug, name, available_campuses, template_type, category_id
        FROM programs WHERE id = $1 AND client_id = $2`,
       [programId, clientId]
     );
@@ -2897,7 +2910,7 @@ app.patch("/api/super/clients/:clientId/programs/:programId", async (req, res) =
       name: parseResult.data.name ?? current.name,
       availableCampuses: parseResult.data.availableCampuses ?? current.available_campuses,
       templateType: parseResult.data.templateType ?? current.template_type,
-      useQuizRouting: parseResult.data.useQuizRouting ?? current.use_quiz_routing
+      categoryId: parseResult.data.categoryId !== undefined ? parseResult.data.categoryId : current.category_id
     };
 
     await pool.query(
@@ -2906,7 +2919,7 @@ app.patch("/api/super/clients/:clientId/programs/:programId", async (req, res) =
            name = $2,
            available_campuses = $3,
            template_type = $4,
-           use_quiz_routing = $5,
+           category_id = $5,
            updated_at = $6
        WHERE id = $7 AND client_id = $8`,
       [
@@ -2914,7 +2927,7 @@ app.patch("/api/super/clients/:clientId/programs/:programId", async (req, res) =
         next.name,
         next.availableCampuses || null,
         next.templateType || null,
-        next.useQuizRouting || false,
+        next.categoryId || null,
         new Date(),
         programId,
         clientId
@@ -3000,8 +3013,8 @@ app.post("/api/super/clients/:clientId/admin-user", async (req, res) => {
 // PROGRAM CATEGORIES API (Super Admin)
 // ============================================================================
 
-// List all categories for a client
-app.get("/api/super/clients/:clientId/categories", async (req, res) => {
+// List all categories for a school
+app.get("/api/super/schools/:schoolId/categories", async (req, res) => {
   try {
     const auth = res.locals.auth as AuthContext | null;
     const authCheck = requireSuperAdmin(auth);
@@ -3009,22 +3022,22 @@ app.get("/api/super/clients/:clientId/categories", async (req, res) => {
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
-    const { clientId } = req.params;
+    const { schoolId } = req.params;
 
     const result = await pool.query(
       `SELECT pc.*, COUNT(p.id) AS program_count
        FROM program_categories pc
-       LEFT JOIN programs p ON p.category_id = pc.id
-       WHERE pc.client_id = $1
+       LEFT JOIN programs p ON p.category_id = pc.id AND p.school_id = pc.school_id
+       WHERE pc.school_id = $1
        GROUP BY pc.id
        ORDER BY pc.display_order, pc.name`,
-      [clientId]
+      [schoolId]
     );
 
     return res.json({
       categories: result.rows.map((row) => ({
         id: row.id,
-        clientId: row.client_id,
+        schoolId: row.school_id,
         name: row.name,
         slug: row.slug,
         displayOrder: row.display_order,
@@ -3041,7 +3054,7 @@ app.get("/api/super/clients/:clientId/categories", async (req, res) => {
 });
 
 // Create a new category
-app.post("/api/super/clients/:clientId/categories", async (req, res) => {
+app.post("/api/super/schools/:schoolId/categories", async (req, res) => {
   try {
     const auth = res.locals.auth as AuthContext | null;
     const authCheck = requireSuperAdmin(auth);
@@ -3049,17 +3062,24 @@ app.post("/api/super/clients/:clientId/categories", async (req, res) => {
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
-    const { clientId } = req.params;
+    const { schoolId } = req.params;
     const { name, slug, displayOrder } = req.body;
 
     if (!name || !slug) {
       return res.status(400).json({ error: "Name and slug are required" });
     }
 
-    // Check if slug already exists for this client
+    // Get school's client_id for cache invalidation
+    const schoolResult = await pool.query("SELECT client_id FROM schools WHERE id = $1", [schoolId]);
+    if (schoolResult.rows.length === 0) {
+      return res.status(404).json({ error: "School not found" });
+    }
+    const clientId = schoolResult.rows[0].client_id;
+
+    // Check if slug already exists for this school
     const existing = await pool.query(
-      "SELECT id FROM program_categories WHERE client_id = $1 AND slug = $2",
-      [clientId, slug]
+      "SELECT id FROM program_categories WHERE school_id = $1 AND slug = $2",
+      [schoolId, slug]
     );
 
     if (existing.rows.length > 0) {
@@ -3068,9 +3088,9 @@ app.post("/api/super/clients/:clientId/categories", async (req, res) => {
 
     const categoryId = uuidv4();
     await pool.query(
-      `INSERT INTO program_categories (id, client_id, name, slug, display_order, created_at, updated_at)
+      `INSERT INTO program_categories (id, school_id, name, slug, display_order, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
-      [categoryId, clientId, name, slug, displayOrder || 0]
+      [categoryId, schoolId, name, slug, displayOrder || 0]
     );
 
     invalidateConfigCache(clientId);
@@ -3083,7 +3103,7 @@ app.post("/api/super/clients/:clientId/categories", async (req, res) => {
 });
 
 // Get a single category
-app.get("/api/super/clients/:clientId/categories/:categoryId", async (req, res) => {
+app.get("/api/super/schools/:schoolId/categories/:categoryId", async (req, res) => {
   try {
     const auth = res.locals.auth as AuthContext | null;
     const authCheck = requireSuperAdmin(auth);
@@ -3091,11 +3111,11 @@ app.get("/api/super/clients/:clientId/categories/:categoryId", async (req, res) 
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
-    const { clientId, categoryId } = req.params;
+    const { schoolId, categoryId } = req.params;
 
     const result = await pool.query(
-      "SELECT * FROM program_categories WHERE id = $1 AND client_id = $2",
-      [categoryId, clientId]
+      "SELECT * FROM program_categories WHERE id = $1 AND school_id = $2",
+      [categoryId, schoolId]
     );
 
     if (result.rows.length === 0) {
@@ -3106,7 +3126,7 @@ app.get("/api/super/clients/:clientId/categories/:categoryId", async (req, res) 
     return res.json({
       category: {
         id: row.id,
-        clientId: row.client_id,
+        schoolId: row.school_id,
         name: row.name,
         slug: row.slug,
         displayOrder: row.display_order,
@@ -3122,7 +3142,7 @@ app.get("/api/super/clients/:clientId/categories/:categoryId", async (req, res) 
 });
 
 // Update a category
-app.patch("/api/super/clients/:clientId/categories/:categoryId", async (req, res) => {
+app.patch("/api/super/schools/:schoolId/categories/:categoryId", async (req, res) => {
   try {
     const auth = res.locals.auth as AuthContext | null;
     const authCheck = requireSuperAdmin(auth);
@@ -3130,24 +3150,29 @@ app.patch("/api/super/clients/:clientId/categories/:categoryId", async (req, res
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
-    const { clientId, categoryId } = req.params;
+    const { schoolId, categoryId } = req.params;
     const { name, slug, displayOrder, isActive } = req.body;
 
-    // Verify category exists
+    // Verify category exists and get client_id
     const existing = await pool.query(
-      "SELECT id FROM program_categories WHERE id = $1 AND client_id = $2",
-      [categoryId, clientId]
+      `SELECT pc.id, s.client_id
+       FROM program_categories pc
+       JOIN schools s ON s.id = pc.school_id
+       WHERE pc.id = $1 AND pc.school_id = $2`,
+      [categoryId, schoolId]
     );
 
     if (existing.rows.length === 0) {
       return res.status(404).json({ error: "Category not found" });
     }
 
+    const clientId = existing.rows[0].client_id;
+
     // If slug is being changed, check for conflicts
     if (slug) {
       const conflict = await pool.query(
-        "SELECT id FROM program_categories WHERE client_id = $1 AND slug = $2 AND id != $3",
-        [clientId, slug, categoryId]
+        "SELECT id FROM program_categories WHERE school_id = $1 AND slug = $2 AND id != $3",
+        [schoolId, slug, categoryId]
       );
 
       if (conflict.rows.length > 0) {
@@ -3181,10 +3206,10 @@ app.patch("/api/super/clients/:clientId/categories/:categoryId", async (req, res
     }
 
     updates.push(`updated_at = NOW()`);
-    values.push(categoryId, clientId);
+    values.push(categoryId, schoolId);
 
     await pool.query(
-      `UPDATE program_categories SET ${updates.join(", ")} WHERE id = $${paramCount++} AND client_id = $${paramCount++}`,
+      `UPDATE program_categories SET ${updates.join(", ")} WHERE id = $${paramCount++} AND school_id = $${paramCount++}`,
       values
     );
 
@@ -3198,7 +3223,7 @@ app.patch("/api/super/clients/:clientId/categories/:categoryId", async (req, res
 });
 
 // Delete a category
-app.delete("/api/super/clients/:clientId/categories/:categoryId", async (req, res) => {
+app.delete("/api/super/schools/:schoolId/categories/:categoryId", async (req, res) => {
   try {
     const auth = res.locals.auth as AuthContext | null;
     const authCheck = requireSuperAdmin(auth);
@@ -3206,7 +3231,14 @@ app.delete("/api/super/clients/:clientId/categories/:categoryId", async (req, re
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
-    const { clientId, categoryId } = req.params;
+    const { schoolId, categoryId } = req.params;
+
+    // Get client_id for cache invalidation
+    const schoolResult = await pool.query("SELECT client_id FROM schools WHERE id = $1", [schoolId]);
+    if (schoolResult.rows.length === 0) {
+      return res.status(404).json({ error: "School not found" });
+    }
+    const clientId = schoolResult.rows[0].client_id;
 
     // Check if any programs are using this category
     const programCheck = await pool.query(
@@ -3221,8 +3253,8 @@ app.delete("/api/super/clients/:clientId/categories/:categoryId", async (req, re
     }
 
     const result = await pool.query(
-      "DELETE FROM program_categories WHERE id = $1 AND client_id = $2",
-      [categoryId, clientId]
+      "DELETE FROM program_categories WHERE id = $1 AND school_id = $2",
+      [categoryId, schoolId]
     );
 
     if (result.rowCount === 0) {
@@ -3242,8 +3274,8 @@ app.delete("/api/super/clients/:clientId/categories/:categoryId", async (req, re
 // QUIZ STAGES API (Super Admin)
 // ============================================================================
 
-// List all stages for a client/school
-app.get("/api/super/clients/:clientId/quiz/stages", async (req, res) => {
+// List all stages for a school
+app.get("/api/super/schools/:schoolId/quiz/stages", async (req, res) => {
   try {
     const auth = res.locals.auth as AuthContext | null;
     const authCheck = requireSuperAdmin(auth);
@@ -3251,33 +3283,25 @@ app.get("/api/super/clients/:clientId/quiz/stages", async (req, res) => {
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
-    const { clientId } = req.params;
-    const { schoolId } = req.query;
+    const { schoolId } = req.params;
 
-    let query = `
+    const query = `
       SELECT qs.*,
              pc.name AS category_name,
              COUNT(DISTINCT qq.id) AS question_count
       FROM quiz_stages qs
       LEFT JOIN program_categories pc ON pc.id = qs.category_id
-      LEFT JOIN quiz_questions qq ON qq.stage_id = qs.id AND qq.is_active = true
-      WHERE qs.client_id = $1
+      LEFT JOIN quiz_questions qq ON qq.stage_id = qs.id
+      WHERE qs.school_id = $1
+      GROUP BY qs.id, pc.name
+      ORDER BY qs.display_order, qs.name
     `;
-    const params: any[] = [clientId];
 
-    if (schoolId) {
-      query += ` AND (qs.school_id IS NULL OR qs.school_id = $2)`;
-      params.push(schoolId);
-    }
-
-    query += ` GROUP BY qs.id, pc.name ORDER BY qs.display_order, qs.name`;
-
-    const result = await pool.query(query, params);
+    const result = await pool.query(query, [schoolId]);
 
     return res.json({
       stages: result.rows.map((row) => ({
         id: row.id,
-        clientId: row.client_id,
         schoolId: row.school_id,
         categoryId: row.category_id,
         categoryName: row.category_name,
@@ -3298,7 +3322,7 @@ app.get("/api/super/clients/:clientId/quiz/stages", async (req, res) => {
 });
 
 // Create a new stage
-app.post("/api/super/clients/:clientId/quiz/stages", async (req, res) => {
+app.post("/api/super/schools/:schoolId/quiz/stages", async (req, res) => {
   try {
     const auth = res.locals.auth as AuthContext | null;
     const authCheck = requireSuperAdmin(auth);
@@ -3306,19 +3330,26 @@ app.post("/api/super/clients/:clientId/quiz/stages", async (req, res) => {
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
-    const { clientId } = req.params;
-    const { schoolId, categoryId, name, slug, description, displayOrder } = req.body;
+    const { schoolId } = req.params;
+    const { categoryId, name, slug, description, displayOrder } = req.body;
 
     if (!name || !slug) {
       return res.status(400).json({ error: "Name and slug are required" });
     }
 
+    // Get client_id for cache invalidation
+    const schoolResult = await pool.query("SELECT client_id FROM schools WHERE id = $1", [schoolId]);
+    if (schoolResult.rows.length === 0) {
+      return res.status(404).json({ error: "School not found" });
+    }
+    const clientId = schoolResult.rows[0].client_id;
+
     const stageId = uuidv4();
     await pool.query(
       `INSERT INTO quiz_stages
-       (id, client_id, school_id, category_id, name, slug, description, display_order, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
-      [stageId, clientId, schoolId || null, categoryId || null, name, slug, description || null, displayOrder || 0]
+       (id, school_id, category_id, name, slug, description, display_order, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())`,
+      [stageId, schoolId, categoryId || null, name, slug, description || null, displayOrder || 0]
     );
 
     invalidateConfigCache(clientId);
@@ -3331,7 +3362,7 @@ app.post("/api/super/clients/:clientId/quiz/stages", async (req, res) => {
 });
 
 // Get a single stage
-app.get("/api/super/clients/:clientId/quiz/stages/:stageId", async (req, res) => {
+app.get("/api/super/schools/:schoolId/quiz/stages/:stageId", async (req, res) => {
   try {
     const auth = res.locals.auth as AuthContext | null;
     const authCheck = requireSuperAdmin(auth);
@@ -3339,14 +3370,14 @@ app.get("/api/super/clients/:clientId/quiz/stages/:stageId", async (req, res) =>
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
-    const { clientId, stageId } = req.params;
+    const { schoolId, stageId } = req.params;
 
     const result = await pool.query(
       `SELECT qs.*, pc.name AS category_name
        FROM quiz_stages qs
        LEFT JOIN program_categories pc ON pc.id = qs.category_id
-       WHERE qs.id = $1 AND qs.client_id = $2`,
-      [stageId, clientId]
+       WHERE qs.id = $1 AND qs.school_id = $2`,
+      [stageId, schoolId]
     );
 
     if (result.rows.length === 0) {
@@ -3357,7 +3388,6 @@ app.get("/api/super/clients/:clientId/quiz/stages/:stageId", async (req, res) =>
     return res.json({
       stage: {
         id: row.id,
-        clientId: row.client_id,
         schoolId: row.school_id,
         categoryId: row.category_id,
         categoryName: row.category_name,
@@ -3377,7 +3407,7 @@ app.get("/api/super/clients/:clientId/quiz/stages/:stageId", async (req, res) =>
 });
 
 // Update a stage
-app.patch("/api/super/clients/:clientId/quiz/stages/:stageId", async (req, res) => {
+app.patch("/api/super/schools/:schoolId/quiz/stages/:stageId", async (req, res) => {
   try {
     const auth = res.locals.auth as AuthContext | null;
     const authCheck = requireSuperAdmin(auth);
@@ -3385,27 +3415,28 @@ app.patch("/api/super/clients/:clientId/quiz/stages/:stageId", async (req, res) 
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
-    const { clientId, stageId } = req.params;
-    const { schoolId, categoryId, name, slug, description, displayOrder, isActive } = req.body;
+    const { schoolId, stageId } = req.params;
+    const { categoryId, name, slug, description, displayOrder, isActive } = req.body;
 
-    // Verify stage exists
+    // Verify stage exists and get client_id
     const existing = await pool.query(
-      "SELECT id FROM quiz_stages WHERE id = $1 AND client_id = $2",
-      [stageId, clientId]
+      `SELECT qs.id, s.client_id
+       FROM quiz_stages qs
+       JOIN schools s ON s.id = qs.school_id
+       WHERE qs.id = $1 AND qs.school_id = $2`,
+      [stageId, schoolId]
     );
 
     if (existing.rows.length === 0) {
       return res.status(404).json({ error: "Stage not found" });
     }
 
+    const clientId = existing.rows[0].client_id;
+
     const updates: string[] = [];
     const values: any[] = [];
     let paramCount = 1;
 
-    if (schoolId !== undefined) {
-      updates.push(`school_id = $${paramCount++}`);
-      values.push(schoolId || null);
-    }
     if (categoryId !== undefined) {
       updates.push(`category_id = $${paramCount++}`);
       values.push(categoryId || null);
@@ -3436,10 +3467,10 @@ app.patch("/api/super/clients/:clientId/quiz/stages/:stageId", async (req, res) 
     }
 
     updates.push(`updated_at = NOW()`);
-    values.push(stageId, clientId);
+    values.push(stageId, schoolId);
 
     await pool.query(
-      `UPDATE quiz_stages SET ${updates.join(", ")} WHERE id = $${paramCount++} AND client_id = $${paramCount++}`,
+      `UPDATE quiz_stages SET ${updates.join(", ")} WHERE id = $${paramCount++} AND school_id = $${paramCount++}`,
       values
     );
 
@@ -3453,7 +3484,7 @@ app.patch("/api/super/clients/:clientId/quiz/stages/:stageId", async (req, res) 
 });
 
 // Delete a stage
-app.delete("/api/super/clients/:clientId/quiz/stages/:stageId", async (req, res) => {
+app.delete("/api/super/schools/:schoolId/quiz/stages/:stageId", async (req, res) => {
   try {
     const auth = res.locals.auth as AuthContext | null;
     const authCheck = requireSuperAdmin(auth);
@@ -3461,7 +3492,14 @@ app.delete("/api/super/clients/:clientId/quiz/stages/:stageId", async (req, res)
       return res.status(authCheck.status).json({ error: authCheck.error });
     }
 
-    const { clientId, stageId } = req.params;
+    const { schoolId, stageId } = req.params;
+
+    // Get client_id for cache invalidation
+    const schoolResult = await pool.query("SELECT client_id FROM schools WHERE id = $1", [schoolId]);
+    if (schoolResult.rows.length === 0) {
+      return res.status(404).json({ error: "School not found" });
+    }
+    const clientId = schoolResult.rows[0].client_id;
 
     // Check if any questions are using this stage
     const questionCheck = await pool.query(
@@ -3476,8 +3514,8 @@ app.delete("/api/super/clients/:clientId/quiz/stages/:stageId", async (req, res)
     }
 
     const result = await pool.query(
-      "DELETE FROM quiz_stages WHERE id = $1 AND client_id = $2",
-      [stageId, clientId]
+      "DELETE FROM quiz_stages WHERE id = $1 AND school_id = $2",
+      [stageId, schoolId]
     );
 
     if (result.rowCount === 0) {
