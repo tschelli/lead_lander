@@ -303,15 +303,36 @@ export function SuperAdminLandingQuestionsPage({ schoolId }: SuperAdminLandingQu
                   </div>
 
                   <div className="super-admin__field">
-                    <label className="super-admin__label">CRM Field Name</label>
-                    <input
+                    <label className="super-admin__label">CRM Field Name (Database Column)</label>
+                    <select
                       className="super-admin__input"
                       value={formData.crmFieldName}
                       onChange={(e) => setFormData({ ...formData, crmFieldName: e.target.value })}
-                      placeholder="date_of_birth"
-                    />
+                    >
+                      <option value="">-- Select Field --</option>
+                      <option value="date_of_birth">date_of_birth</option>
+                      <option value="high_school_graduation_year">high_school_graduation_year</option>
+                      <option value="military_status">military_status</option>
+                      <option value="employment_status">employment_status</option>
+                      <option value="education_level">education_level</option>
+                      <option value="citizenship_status">citizenship_status</option>
+                      <option value="state_of_residence">state_of_residence</option>
+                      <option value="zip_code">zip_code</option>
+                      <option value="preferred_start_date">preferred_start_date</option>
+                      <option value="program_interest">program_interest</option>
+                      <option value="how_did_you_hear">how_did_you_hear</option>
+                      <option value="best_time_to_contact">best_time_to_contact</option>
+                      <option value="preferred_contact_method">preferred_contact_method</option>
+                      <option value="currently_enrolled">currently_enrolled</option>
+                      <option value="prior_college_experience">prior_college_experience</option>
+                      <option value="financial_aid_interest">financial_aid_interest</option>
+                      <option value="schedule_preference">schedule_preference</option>
+                      <option value="custom_field_1">custom_field_1</option>
+                      <option value="custom_field_2">custom_field_2</option>
+                      <option value="custom_field_3">custom_field_3</option>
+                    </select>
                     <span className="super-admin__help">
-                      Optional field name for mapping to your CRM (e.g., date_of_birth, high_school_graduation)
+                      Database column name for storing this answer in the submissions table
                     </span>
                   </div>
 

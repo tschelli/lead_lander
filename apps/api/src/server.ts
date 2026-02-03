@@ -412,6 +412,7 @@ const SubmitSchema = z.object({
   campusId: z.string().min(1).nullable(),
   programId: z.string().min(1),
   answers: z.record(z.any()).default({}),
+  landingAnswers: z.record(z.any()).optional(),
   metadata: z
     .object({
       utm: z.record(z.string()).optional(),
@@ -3783,9 +3784,10 @@ app.get("/api/super/quiz/stages/:stageId/questions", async (req, res) => {
 
     // Get questions with their options
     const questions = await pool.query(
-      `SELECT qq.*, qs.client_id
+      `SELECT qq.*, s.client_id
        FROM quiz_questions qq
        JOIN quiz_stages qs ON qs.id = qq.stage_id
+       JOIN schools s ON s.id = qs.school_id
        WHERE qq.stage_id = $1
        ORDER BY qq.display_order, qq.created_at`,
       [stageId]
@@ -3863,9 +3865,12 @@ app.post("/api/super/quiz/stages/:stageId/questions", async (req, res) => {
       return res.status(400).json({ error: "Question text and type are required" });
     }
 
-    // Get client_id from stage
+    // Get client_id from stage via school
     const stageResult = await pool.query(
-      "SELECT client_id FROM quiz_stages WHERE id = $1",
+      `SELECT s.client_id
+       FROM quiz_stages qs
+       JOIN schools s ON s.id = qs.school_id
+       WHERE qs.id = $1`,
       [stageId]
     );
 
@@ -5370,9 +5375,9 @@ app.post("/api/submit", async (req, res) => {
     const insertResult = await pool.query(
       `
         INSERT INTO submissions
-          (id, client_id, created_at, updated_at, school_id, campus_id, program_id, first_name, last_name, email, phone, answers, metadata, status, idempotency_key, consented, consent_text_version, consent_timestamp)
+          (id, client_id, created_at, updated_at, school_id, campus_id, program_id, first_name, last_name, email, phone, answers, landing_answers, metadata, status, source, idempotency_key, consented, consent_text_version, consent_timestamp)
         VALUES
-          ($1, $2, $3, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+          ($1, $2, $3, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
         ON CONFLICT (idempotency_key) DO NOTHING
         RETURNING id, status
       `,
@@ -5388,8 +5393,10 @@ app.post("/api/submit", async (req, res) => {
         payload.email.toLowerCase(),
         payload.phone || null,
         payload.answers,
+        payload.landingAnswers || {},
         metadata,
         "received",
+        "landing_page",
         idempotencyKey,
         payload.consent.consented,
         payload.consent.textVersion,
@@ -5418,6 +5425,13 @@ app.post("/api/submit", async (req, res) => {
         [uuidv4(), entities.school.clientId, submissionId, "received", { metadata }, now]
       );
       console.log(`[${submissionId}] Submission received`);
+    }
+
+    if (wasInserted) {
+      // Trigger submission_created webhook
+      triggerWebhook(payload.schoolId, "submission_created", submissionId).catch((err) => {
+        console.error("Webhook trigger failed:", err);
+      });
     }
 
     if (wasInserted) {

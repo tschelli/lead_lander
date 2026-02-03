@@ -158,6 +158,11 @@ export function FormEngine({
   const [honeypot, setHoneypot] = useState("");
   const [submissionId, setSubmissionId] = useState<string | null>(null);
 
+  // Landing page questions state
+  const [landingQuestions, setLandingQuestions] = useState<any[]>([]);
+  const [landingAnswers, setLandingAnswers] = useState<Record<string, string | string[]>>({});
+  const [landingLoading, setLandingLoading] = useState(false);
+
   // Quiz state
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
   const [quizPrograms, setQuizPrograms] = useState<QuizProgram[]>([]);
@@ -165,6 +170,30 @@ export function FormEngine({
   const [quizLoading, setQuizLoading] = useState(false);
   const [recommendedProgram, setRecommendedProgram] = useState<QuizProgram | null>(null);
   const [quizScores, setQuizScores] = useState<Record<string, number>>({});
+
+  // Fetch landing page questions
+  useEffect(() => {
+    const fetchLandingQuestions = async () => {
+      try {
+        setLandingLoading(true);
+        const baseUrl = apiBaseUrl || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+        const response = await fetch(`${baseUrl}/api/public/schools/${schoolId}/landing-questions`);
+
+        if (!response.ok) throw new Error("Failed to load landing questions");
+
+        const data = await response.json();
+        setLandingQuestions(data.questions || []);
+      } catch (error) {
+        console.error("Landing questions fetch error:", error);
+        // Don't block the form if landing questions fail to load
+        setLandingQuestions([]);
+      } finally {
+        setLandingLoading(false);
+      }
+    };
+
+    fetchLandingQuestions();
+  }, [schoolId, apiBaseUrl]);
 
   // Fetch quiz questions if enabled
   useEffect(() => {
@@ -275,6 +304,10 @@ export function FormEngine({
     setAnswers((prev) => ({ ...prev, [id]: value }));
   };
 
+  const updateLandingAnswer = (id: string, value: string | string[]) => {
+    setLandingAnswers((prev) => ({ ...prev, [id]: value }));
+  };
+
   const updateQuizAnswer = (questionId: string, value: string | string[]) => {
     setQuizAnswers((prev) => ({ ...prev, [questionId]: value }));
   };
@@ -317,6 +350,129 @@ export function FormEngine({
       return !Array.isArray(value) || value.length === 0;
     }
     return !value;
+  };
+
+  const renderLandingQuestion = (question: any) => {
+    const value = landingAnswers[question.id];
+    const isRequired = question.isRequired;
+
+    return (
+      <div className="form-question field" key={question.id}>
+        <label className="field-label">
+          {question.questionText}
+          {isRequired && <span style={{ color: "#d9534f" }}> *</span>}
+        </label>
+        {question.helpText && <p className="field-help" style={{ fontSize: "0.875rem", color: "#666", marginTop: "0.25rem" }}>{question.helpText}</p>}
+
+        {question.questionType === "text" && (
+          <input
+            className="field-input"
+            type="text"
+            value={(value as string) || ""}
+            onChange={(event) => updateLandingAnswer(question.id, event.target.value)}
+            required={isRequired}
+          />
+        )}
+
+        {question.questionType === "email" && (
+          <input
+            className="field-input"
+            type="email"
+            value={(value as string) || ""}
+            onChange={(event) => updateLandingAnswer(question.id, event.target.value)}
+            required={isRequired}
+          />
+        )}
+
+        {question.questionType === "tel" && (
+          <input
+            className="field-input"
+            type="tel"
+            value={(value as string) || ""}
+            onChange={(event) => updateLandingAnswer(question.id, event.target.value)}
+            required={isRequired}
+          />
+        )}
+
+        {question.questionType === "number" && (
+          <input
+            className="field-input"
+            type="number"
+            value={(value as string) || ""}
+            onChange={(event) => updateLandingAnswer(question.id, event.target.value)}
+            required={isRequired}
+          />
+        )}
+
+        {question.questionType === "textarea" && (
+          <textarea
+            className="field-input"
+            value={(value as string) || ""}
+            onChange={(event) => updateLandingAnswer(question.id, event.target.value)}
+            required={isRequired}
+            rows={3}
+          />
+        )}
+
+        {question.questionType === "select" && (
+          <select
+            className="field-input"
+            value={(value as string) || ""}
+            onChange={(event) => updateLandingAnswer(question.id, event.target.value)}
+            required={isRequired}
+          >
+            <option value="">Select one</option>
+            {question.options?.map((option: any) => (
+              <option key={option.id} value={option.optionValue}>
+                {option.optionText}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {question.questionType === "radio" && (
+          <div className="option-group">
+            {question.options?.map((option: any) => (
+              <label key={option.id} className="option">
+                <input
+                  type="radio"
+                  name={question.id}
+                  checked={value === option.optionValue}
+                  onChange={() => updateLandingAnswer(question.id, option.optionValue)}
+                  required={isRequired}
+                />
+                {option.optionText}
+              </label>
+            ))}
+          </div>
+        )}
+
+        {question.questionType === "checkbox" && (
+          <div className="option-group">
+            {question.options?.map((option: any) => {
+              const currentValues = Array.isArray(value) ? value : [];
+              const checked = currentValues.includes(option.optionValue);
+
+              return (
+                <label key={option.id} className="option">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      const nextValues = checked
+                        ? currentValues.filter((v) => v !== option.optionValue)
+                        : [...currentValues, option.optionValue];
+                      updateLandingAnswer(question.id, nextValues);
+                    }}
+                  />
+                  {option.optionText}
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderQuestion = (question: Question) => {
@@ -498,6 +654,17 @@ export function FormEngine({
         }
       }
 
+      // Validate landing page questions
+      for (const question of landingQuestions) {
+        if (question.isRequired) {
+          const answer = landingAnswers[question.id];
+          if (!answer || (Array.isArray(answer) && answer.length === 0) || (typeof answer === "string" && answer.trim() === "")) {
+            setError(`Please answer: ${question.questionText}`);
+            return;
+          }
+        }
+      }
+
       setIsSubmitting(true);
       try {
         const baseUrl = apiBaseUrl || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
@@ -525,6 +692,7 @@ export function FormEngine({
           campusId,
           programId,
           answers: payloadAnswers,
+          landingAnswers,
           honeypot,
           metadata: {
             utm: Object.fromEntries(new URLSearchParams(window.location.search)),
@@ -742,6 +910,13 @@ export function FormEngine({
             </div>
           </div>
           <div className="field-stack">
+            {landingQuestions.length > 0 && (
+              <>
+                {landingQuestions
+                  .sort((a, b) => a.displayOrder - b.displayOrder)
+                  .map((question) => renderLandingQuestion(question))}
+              </>
+            )}
             {visibleLeadQuestions.map((question) => renderQuestion(question))}
           </div>
           <p className="disclaimer">{consentText}</p>
