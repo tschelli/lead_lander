@@ -636,8 +636,8 @@ function EntityDetailPanel({
 }: {
   entity: any;
   clients: Client[];
-  detailTab: "overview" | "config" | "quiz" | "audit";
-  setDetailTab: (value: "overview" | "config" | "quiz" | "audit") => void;
+  detailTab: "overview" | "config" | "quiz" | "landing" | "audit";
+  setDetailTab: (value: "overview" | "config" | "quiz" | "landing" | "audit") => void;
   onRefreshTree: () => Promise<void>;
 }) {
   // Find the entity details
