@@ -370,13 +370,47 @@ function EntityDetailPanel({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const updateDetail = (updates: Record<string, any>) => {
     setDetail((prev: any) => ({ ...(prev || {}), ...updates }));
+    // Clear validation errors for updated fields
+    const updatedKeys = Object.keys(updates);
+    setValidationErrors((prev) => {
+      const next = { ...prev };
+      updatedKeys.forEach((key) => delete next[key]);
+      return next;
+    });
+  };
+
+  const validateDetail = () => {
+    const errors: Record<string, string> = {};
+
+    if (!detail?.name?.trim()) {
+      errors.name = "Name is required";
+    }
+
+    if (entity.type !== "client" && !detail?.slug?.trim()) {
+      errors.slug = "Slug is required";
+    }
+
+    if (entity.type !== "client" && detail?.slug && !/^[a-z0-9-]+$/.test(detail.slug)) {
+      errors.slug = "Slug must contain only lowercase letters, numbers, and hyphens";
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const saveDetail = async () => {
     if (!detail || !entityDetails) return;
+
+    // Validate before saving
+    if (!validateDetail()) {
+      setMessage({ type: "error", text: "Please fix the errors before saving" });
+      return;
+    }
+
     setSaving(true);
     setMessage(null);
 
@@ -431,6 +465,7 @@ function EntityDetailPanel({
       if (!entityDetails) return;
       setLoading(true);
       setMessage(null);
+      setValidationErrors({});
       try {
         let url = "";
         if (entity.type === "client") {
@@ -521,268 +556,482 @@ function EntityDetailPanel({
       </div>
       <div className="super-admin__panel-content">
         {detailTab === "overview" && entityDetails && (
-          <div className="super-admin__details">
-            {message && (
-              <div className={`config-message config-message-${message.type}`}>{message.text}</div>
-            )}
-            {loading && <p className="admin-muted">Loading details…</p>}
-
-            <div className="super-admin__detail-row">
-              <strong>ID:</strong> {entity.id}
-            </div>
-
+          <>
+            {/* Sticky Save Bar */}
             {detail && (
-              <>
-                <div className="super-admin__detail-row">
-                  <label>Name</label>
-                  <input
-                    className="form-input"
-                    value={detail.name || ""}
-                    onChange={(event) => updateDetail({ name: event.target.value })}
-                  />
-                </div>
-
-                {entity.type !== "client" && (
-                  <div className="super-admin__detail-row">
-                    <label>Slug</label>
-                    <input
-                      className="form-input"
-                      value={detail.slug || ""}
-                      onChange={(event) => updateDetail({ slug: event.target.value })}
-                    />
+              <div className={`super-admin__save-bar ${message ? "has-message" : ""}`}>
+                {message && (
+                  <div className={`super-admin__save-message super-admin__save-message--${message.type}`}>
+                    {message.text}
                   </div>
                 )}
-
-                {entity.type === "client" && (
-                  <>
-                    <div className="super-admin__detail-row">
-                      <strong>Schools:</strong> {entityDetails.schools.length}
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <strong>Total Programs:</strong>{" "}
-                      {entityDetails.schools.reduce((sum: number, s: School) => sum + s.programs.length, 0)}
-                    </div>
-                  </>
-                )}
-
-                {entity.type === "school" && (
-                  <>
-                    <div className="super-admin__detail-row">
-                      <strong>Client:</strong> {entityDetails.clientName}
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <strong>Programs:</strong> {entityDetails.programs.length}
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <label>CRM Connection ID</label>
-                      <input
-                        className="form-input"
-                        value={detail.crmConnectionId || ""}
-                        onChange={(event) => updateDetail({ crmConnectionId: event.target.value })}
-                      />
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <label>Branding - Logo URL</label>
-                      <input
-                        className="form-input"
-                        value={detail.branding?.logoUrl || ""}
-                        onChange={(event) =>
-                          updateDetail({
-                            branding: { ...(detail.branding || {}), logoUrl: event.target.value }
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <label>Branding - Primary Color</label>
-                      <input
-                        className="form-input"
-                        value={detail.branding?.colors?.primary || ""}
-                        onChange={(event) =>
-                          updateDetail({
-                            branding: {
-                              ...(detail.branding || {}),
-                              colors: { ...(detail.branding?.colors || {}), primary: event.target.value }
-                            }
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <label>Branding - Secondary Color</label>
-                      <input
-                        className="form-input"
-                        value={detail.branding?.colors?.secondary || ""}
-                        onChange={(event) =>
-                          updateDetail({
-                            branding: {
-                              ...(detail.branding || {}),
-                              colors: { ...(detail.branding?.colors || {}), secondary: event.target.value }
-                            }
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <label>Compliance - Disclaimer</label>
-                      <textarea
-                        className="form-textarea"
-                        rows={2}
-                        value={detail.compliance?.disclaimerText || ""}
-                        onChange={(event) =>
-                          updateDetail({
-                            compliance: {
-                              ...(detail.compliance || {}),
-                              disclaimerText: event.target.value
-                            }
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <label>Compliance - Version</label>
-                      <input
-                        className="form-input"
-                        value={detail.compliance?.version || ""}
-                        onChange={(event) =>
-                          updateDetail({
-                            compliance: { ...(detail.compliance || {}), version: event.target.value }
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <label>Thank You Title</label>
-                      <input
-                        className="form-input"
-                        value={detail.thankYou?.title || ""}
-                        onChange={(event) =>
-                          updateDetail({
-                            thankYou: { ...(detail.thankYou || {}), title: event.target.value }
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <label>Thank You Message</label>
-                      <input
-                        className="form-input"
-                        value={detail.thankYou?.message || ""}
-                        onChange={(event) =>
-                          updateDetail({
-                            thankYou: { ...(detail.thankYou || {}), message: event.target.value }
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <label>Thank You Body</label>
-                      <textarea
-                        className="form-textarea"
-                        rows={2}
-                        value={detail.thankYou?.body || ""}
-                        onChange={(event) =>
-                          updateDetail({
-                            thankYou: { ...(detail.thankYou || {}), body: event.target.value }
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <label>Thank You CTA Text</label>
-                      <input
-                        className="form-input"
-                        value={detail.thankYou?.ctaText || ""}
-                        onChange={(event) =>
-                          updateDetail({
-                            thankYou: { ...(detail.thankYou || {}), ctaText: event.target.value }
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <label>Thank You CTA URL</label>
-                      <input
-                        className="form-input"
-                        value={detail.thankYou?.ctaUrl || ""}
-                        onChange={(event) =>
-                          updateDetail({
-                            thankYou: { ...(detail.thankYou || {}), ctaUrl: event.target.value }
-                          })
-                        }
-                      />
-                    </div>
-                  </>
-                )}
-
-                {entity.type === "program" && (
-                  <>
-                    <div className="super-admin__detail-row">
-                      <strong>School:</strong> {entityDetails.schoolName}
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <strong>Client:</strong> {entityDetails.clientName}
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <label>Template Type</label>
-                      <select
-                        className="form-input"
-                        value={detail.templateType || "full"}
-                        onChange={(event) => updateDetail({ templateType: event.target.value })}
-                      >
-                        <option value="full">Full</option>
-                        <option value="minimal">Minimal</option>
-                      </select>
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={Boolean(detail.useQuizRouting)}
-                          onChange={(event) => updateDetail({ useQuizRouting: event.target.checked })}
-                        />
-                        Enable Quiz Routing
-                      </label>
-                    </div>
-                    <div className="super-admin__detail-row">
-                      <label>Available Campuses (IDs, comma-separated)</label>
-                      <input
-                        className="form-input"
-                        value={(detail.availableCampuses || []).join(", ")}
-                        onChange={(event) =>
-                          updateDetail({
-                            availableCampuses: event.target.value
-                              .split(",")
-                              .map((value: string) => value.trim())
-                              .filter(Boolean)
-                          })
-                        }
-                      />
-                    </div>
-                  </>
-                )}
-
-                <div className="super-admin__detail-row">
-                  <button className="admin-btn" onClick={saveDetail} disabled={saving}>
+                <div className="super-admin__save-actions">
+                  <button
+                    className="super-admin__btn super-admin__btn--primary"
+                    onClick={saveDetail}
+                    disabled={saving}
+                  >
                     {saving ? "Saving..." : "Save Changes"}
                   </button>
+                  <button
+                    className="super-admin__btn super-admin__btn--ghost"
+                    onClick={() => {
+                      if (entityDetails) {
+                        const fetchDetail = async () => {
+                          setLoading(true);
+                          setValidationErrors({});
+                          try {
+                            let url = "";
+                            if (entity.type === "client") {
+                              url = `/api/super/clients/${entityDetails.id}`;
+                            } else if (entity.type === "school") {
+                              url = `/api/super/clients/${entityDetails.clientId}/schools/${entityDetails.id}`;
+                            } else if (entity.type === "program") {
+                              url = `/api/super/clients/${entityDetails.clientId}/programs/${entityDetails.id}`;
+                            }
+                            const res = await fetch(url, { credentials: "include" });
+                            if (!res.ok) throw new Error("Failed to reload");
+                            const data = await res.json();
+                            let nextDetail = entity.type === "client" ? data.client : entity.type === "school" ? data.school : data.program;
+                            if (entity.type === "school" && nextDetail) {
+                              nextDetail = {
+                                ...nextDetail,
+                                crmConnectionId: nextDetail.crm_connection_id,
+                                thankYou: nextDetail.thank_you,
+                                branding: nextDetail.branding || {},
+                                compliance: nextDetail.compliance || {}
+                              };
+                            }
+                            if (entity.type === "program" && nextDetail) {
+                              nextDetail = {
+                                ...nextDetail,
+                                availableCampuses: nextDetail.available_campuses || [],
+                                templateType: nextDetail.template_type,
+                                useQuizRouting: nextDetail.use_quiz_routing
+                              };
+                            }
+                            setDetail(nextDetail);
+                            setMessage(null);
+                          } catch (error) {
+                            console.error(error);
+                          } finally {
+                            setLoading(false);
+                          }
+                        };
+                        fetchDetail();
+                      }
+                    }}
+                    disabled={saving}
+                  >
+                    Discard Changes
+                  </button>
                 </div>
-              </>
+              </div>
             )}
-          </div>
+
+            <div className="super-admin__details">
+              {loading && (
+                <div className="super-admin__skeleton">
+                  <div className="super-admin__skeleton-card"></div>
+                  <div className="super-admin__skeleton-card"></div>
+                  <div className="super-admin__skeleton-card"></div>
+                </div>
+              )}
+
+              {!loading && detail && (
+                <>
+                  {/* Basic Information Section */}
+                  <div className="super-admin__section">
+                    <h3 className="super-admin__section-title">Basic Information</h3>
+                    <div className="super-admin__section-content">
+                      <div className="super-admin__field">
+                        <label className="super-admin__label">
+                          ID
+                          <span className="super-admin__label-badge">Read-only</span>
+                        </label>
+                        <div className="super-admin__value">{entity.id}</div>
+                      </div>
+
+                      <div className="super-admin__field">
+                        <label className="super-admin__label">
+                          Name
+                          <span className="super-admin__label-required">*</span>
+                        </label>
+                        <input
+                          className={`super-admin__input ${validationErrors.name ? "is-invalid" : ""}`}
+                          value={detail.name || ""}
+                          onChange={(event) => updateDetail({ name: event.target.value })}
+                          placeholder="Enter name"
+                        />
+                        {validationErrors.name && (
+                          <span className="super-admin__field-error">{validationErrors.name}</span>
+                        )}
+                      </div>
+
+                      {entity.type !== "client" && (
+                        <div className="super-admin__field">
+                          <label className="super-admin__label">
+                            Slug
+                            <span className="super-admin__label-required">*</span>
+                          </label>
+                          <input
+                            className={`super-admin__input ${validationErrors.slug ? "is-invalid" : ""}`}
+                            value={detail.slug || ""}
+                            onChange={(event) => updateDetail({ slug: event.target.value })}
+                            placeholder="url-friendly-slug"
+                          />
+                          <span className="super-admin__help">Used in URLs (lowercase, hyphens only)</span>
+                          {validationErrors.slug && (
+                            <span className="super-admin__field-error">{validationErrors.slug}</span>
+                          )}
+                        </div>
+                      )}
+
+                      {entity.type === "client" && (
+                        <>
+                          <div className="super-admin__field">
+                            <label className="super-admin__label">Schools</label>
+                            <div className="super-admin__value">{entityDetails.schools.length}</div>
+                          </div>
+                          <div className="super-admin__field">
+                            <label className="super-admin__label">Total Programs</label>
+                            <div className="super-admin__value">
+                              {entityDetails.schools.reduce((sum: number, s: School) => sum + s.programs.length, 0)}
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {entity.type === "school" && (
+                        <>
+                          <div className="super-admin__field">
+                            <label className="super-admin__label">Client</label>
+                            <div className="super-admin__value">{entityDetails.clientName}</div>
+                          </div>
+                          <div className="super-admin__field">
+                            <label className="super-admin__label">Programs</label>
+                            <div className="super-admin__value">{entityDetails.programs.length}</div>
+                          </div>
+                          <div className="super-admin__field">
+                            <label className="super-admin__label">CRM Connection ID</label>
+                            <input
+                              className="super-admin__input"
+                              value={detail.crmConnectionId || ""}
+                              onChange={(event) => updateDetail({ crmConnectionId: event.target.value })}
+                              placeholder="crm-connection-id"
+                            />
+                          </div>
+                        </>
+                      )}
+
+                      {entity.type === "program" && (
+                        <>
+                          <div className="super-admin__field">
+                            <label className="super-admin__label">School</label>
+                            <div className="super-admin__value">{entityDetails.schoolName}</div>
+                          </div>
+                          <div className="super-admin__field">
+                            <label className="super-admin__label">Client</label>
+                            <div className="super-admin__value">{entityDetails.clientName}</div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Branding Section - Schools Only */}
+                  {entity.type === "school" && (
+                    <div className="super-admin__section">
+                      <h3 className="super-admin__section-title">Branding</h3>
+                      <div className="super-admin__section-content">
+                        <div className="super-admin__field">
+                          <label className="super-admin__label">Logo URL</label>
+                          <div className="super-admin__field-with-preview">
+                            <input
+                              className="super-admin__input"
+                              value={detail.branding?.logoUrl || ""}
+                              onChange={(event) =>
+                                updateDetail({
+                                  branding: { ...(detail.branding || {}), logoUrl: event.target.value }
+                                })
+                              }
+                              placeholder="https://cdn.example.com/logo.png"
+                            />
+                            {detail.branding?.logoUrl && (
+                              <div className="super-admin__logo-preview">
+                                <img src={detail.branding.logoUrl} alt="Logo preview" />
+                              </div>
+                            )}
+                          </div>
+                          <span className="super-admin__help">Upload to S3 or CDN first, then paste URL here</span>
+                        </div>
+
+                        <div className="super-admin__field-group">
+                          <div className="super-admin__field">
+                            <label className="super-admin__label">Primary Color</label>
+                            <div className="super-admin__color-input">
+                              <input
+                                type="color"
+                                className="super-admin__color-picker"
+                                value={detail.branding?.colors?.primary || "#0e7490"}
+                                onChange={(event) =>
+                                  updateDetail({
+                                    branding: {
+                                      ...(detail.branding || {}),
+                                      colors: { ...(detail.branding?.colors || {}), primary: event.target.value }
+                                    }
+                                  })
+                                }
+                              />
+                              <input
+                                className="super-admin__input"
+                                value={detail.branding?.colors?.primary || ""}
+                                onChange={(event) =>
+                                  updateDetail({
+                                    branding: {
+                                      ...(detail.branding || {}),
+                                      colors: { ...(detail.branding?.colors || {}), primary: event.target.value }
+                                    }
+                                  })
+                                }
+                                placeholder="#0e7490"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="super-admin__field">
+                            <label className="super-admin__label">Secondary Color</label>
+                            <div className="super-admin__color-input">
+                              <input
+                                type="color"
+                                className="super-admin__color-picker"
+                                value={detail.branding?.colors?.secondary || "#64748b"}
+                                onChange={(event) =>
+                                  updateDetail({
+                                    branding: {
+                                      ...(detail.branding || {}),
+                                      colors: { ...(detail.branding?.colors || {}), secondary: event.target.value }
+                                    }
+                                  })
+                                }
+                              />
+                              <input
+                                className="super-admin__input"
+                                value={detail.branding?.colors?.secondary || ""}
+                                onChange={(event) =>
+                                  updateDetail({
+                                    branding: {
+                                      ...(detail.branding || {}),
+                                      colors: { ...(detail.branding?.colors || {}), secondary: event.target.value }
+                                    }
+                                  })
+                                }
+                                placeholder="#64748b"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Compliance Section - Schools Only */}
+                  {entity.type === "school" && (
+                    <div className="super-admin__section">
+                      <h3 className="super-admin__section-title">Compliance</h3>
+                      <div className="super-admin__section-content">
+                        <div className="super-admin__field">
+                          <label className="super-admin__label">Disclaimer Text</label>
+                          <textarea
+                            className="super-admin__textarea"
+                            rows={4}
+                            value={detail.compliance?.disclaimerText || ""}
+                            onChange={(event) =>
+                              updateDetail({
+                                compliance: {
+                                  ...(detail.compliance || {}),
+                                  disclaimerText: event.target.value
+                                }
+                              })
+                            }
+                            placeholder="Enter compliance disclaimer text"
+                          />
+                        </div>
+
+                        <div className="super-admin__field">
+                          <label className="super-admin__label">Version</label>
+                          <input
+                            className="super-admin__input"
+                            value={detail.compliance?.version || ""}
+                            onChange={(event) =>
+                              updateDetail({
+                                compliance: { ...(detail.compliance || {}), version: event.target.value }
+                              })
+                            }
+                            placeholder="1.0"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Thank You Page Section - Schools Only */}
+                  {entity.type === "school" && (
+                    <div className="super-admin__section">
+                      <h3 className="super-admin__section-title">Thank You Page</h3>
+                      <div className="super-admin__section-content">
+                        <div className="super-admin__field">
+                          <label className="super-admin__label">Title</label>
+                          <input
+                            className="super-admin__input"
+                            value={detail.thankYou?.title || ""}
+                            onChange={(event) =>
+                              updateDetail({
+                                thankYou: { ...(detail.thankYou || {}), title: event.target.value }
+                              })
+                            }
+                            placeholder="Thank You!"
+                          />
+                        </div>
+
+                        <div className="super-admin__field">
+                          <label className="super-admin__label">Message</label>
+                          <input
+                            className="super-admin__input"
+                            value={detail.thankYou?.message || ""}
+                            onChange={(event) =>
+                              updateDetail({
+                                thankYou: { ...(detail.thankYou || {}), message: event.target.value }
+                              })
+                            }
+                            placeholder="We've received your information"
+                          />
+                        </div>
+
+                        <div className="super-admin__field">
+                          <label className="super-admin__label">Body</label>
+                          <textarea
+                            className="super-admin__textarea"
+                            rows={3}
+                            value={detail.thankYou?.body || ""}
+                            onChange={(event) =>
+                              updateDetail({
+                                thankYou: { ...(detail.thankYou || {}), body: event.target.value }
+                              })
+                            }
+                            placeholder="An admissions counselor will contact you shortly..."
+                          />
+                        </div>
+
+                        <div className="super-admin__field-group">
+                          <div className="super-admin__field">
+                            <label className="super-admin__label">CTA Button Text</label>
+                            <input
+                              className="super-admin__input"
+                              value={detail.thankYou?.ctaText || ""}
+                              onChange={(event) =>
+                                updateDetail({
+                                  thankYou: { ...(detail.thankYou || {}), ctaText: event.target.value }
+                                })
+                              }
+                              placeholder="Back to Home"
+                            />
+                          </div>
+
+                          <div className="super-admin__field">
+                            <label className="super-admin__label">CTA Button URL</label>
+                            <input
+                              className="super-admin__input"
+                              value={detail.thankYou?.ctaUrl || ""}
+                              onChange={(event) =>
+                                updateDetail({
+                                  thankYou: { ...(detail.thankYou || {}), ctaUrl: event.target.value }
+                                })
+                              }
+                              placeholder="https://example.com"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Program Configuration - Programs Only */}
+                  {entity.type === "program" && (
+                    <div className="super-admin__section">
+                      <h3 className="super-admin__section-title">Program Configuration</h3>
+                      <div className="super-admin__section-content">
+                        <div className="super-admin__field">
+                          <label className="super-admin__label">Template Type</label>
+                          <select
+                            className="super-admin__input"
+                            value={detail.templateType || "full"}
+                            onChange={(event) => updateDetail({ templateType: event.target.value })}
+                          >
+                            <option value="full">Full - All sections visible</option>
+                            <option value="minimal">Minimal - Hero and form only</option>
+                          </select>
+                        </div>
+
+                        <div className="super-admin__field">
+                          <label className="super-admin__checkbox-label">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(detail.useQuizRouting)}
+                              onChange={(event) => updateDetail({ useQuizRouting: event.target.checked })}
+                            />
+                            <span>Enable Quiz Routing</span>
+                          </label>
+                          <span className="super-admin__help">Route leads to campuses based on quiz answers</span>
+                        </div>
+
+                        <div className="super-admin__field">
+                          <label className="super-admin__label">Available Campuses</label>
+                          <input
+                            className="super-admin__input"
+                            value={(detail.availableCampuses || []).join(", ")}
+                            onChange={(event) =>
+                              updateDetail({
+                                availableCampuses: event.target.value
+                                  .split(",")
+                                  .map((value: string) => value.trim())
+                                  .filter(Boolean)
+                              })
+                            }
+                            placeholder="campus-1, campus-2, campus-3"
+                          />
+                          <span className="super-admin__help">Comma-separated campus IDs</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </>
         )}
 
         {detailTab === "config" && schoolContext && (
-          <ConfigBuilderPage schoolSlug={schoolContext.school.slug} programs={schoolContext.programs} />
+          <div className="super-admin__config-wrapper">
+            <ConfigBuilderPage schoolSlug={schoolContext.school.slug} programs={schoolContext.programs} />
+          </div>
         )}
 
         {detailTab === "quiz" && schoolContext && (
-          <QuizBuilderPage schoolSlug={schoolContext.school.slug} programs={schoolContext.programs} />
+          <div className="super-admin__config-wrapper">
+            <QuizBuilderPage schoolSlug={schoolContext.school.slug} programs={schoolContext.programs} />
+          </div>
         )}
 
         {detailTab === "audit" && (
-          <div className="super-admin__details">
-            <p className="admin-muted">Audit log will appear here.</p>
+          <div className="super-admin__section">
+            <div className="super-admin__section-content">
+              <div className="super-admin__empty-state">
+                <div className="super-admin__empty-icon">📋</div>
+                <h3>Audit Log</h3>
+                <p>Activity history and change logs will appear here.</p>
+              </div>
+            </div>
           </div>
         )}
       </div>
