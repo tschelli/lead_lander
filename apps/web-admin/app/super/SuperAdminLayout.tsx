@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ConfigBuilderPage } from "../[school]/config/ConfigBuilderPage";
 import { QuizBuilderPage } from "../[school]/quiz/QuizBuilderPage";
+import { SuperAdminQuizPage } from "./SuperAdminQuizPage";
 import "./super-admin.css";
 
 type Client = {
@@ -1017,10 +1018,17 @@ function EntityDetailPanel({
           </div>
         )}
 
-        {detailTab === "quiz" && schoolContext && (
-          <div className="super-admin__config-wrapper">
-            <QuizBuilderPage schoolSlug={schoolContext.school.slug} programs={schoolContext.programs} />
-          </div>
+        {detailTab === "quiz" && (
+          <>
+            {entity.type === "client" && entityDetails && (
+              <SuperAdminQuizPage clientId={entityDetails.id} />
+            )}
+            {entity.type !== "client" && schoolContext && (
+              <div className="super-admin__config-wrapper">
+                <QuizBuilderPage schoolSlug={schoolContext.school.slug} programs={schoolContext.programs} />
+              </div>
+            )}
+          </>
         )}
 
         {detailTab === "audit" && (

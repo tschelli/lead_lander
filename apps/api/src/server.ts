@@ -2996,6 +2996,1385 @@ app.post("/api/super/clients/:clientId/admin-user", async (req, res) => {
   }
 });
 
+// ============================================================================
+// PROGRAM CATEGORIES API (Super Admin)
+// ============================================================================
+
+// List all categories for a client
+app.get("/api/super/clients/:clientId/categories", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { clientId } = req.params;
+
+    const result = await pool.query(
+      `SELECT pc.*, COUNT(p.id) AS program_count
+       FROM program_categories pc
+       LEFT JOIN programs p ON p.category_id = pc.id
+       WHERE pc.client_id = $1
+       GROUP BY pc.id
+       ORDER BY pc.display_order, pc.name`,
+      [clientId]
+    );
+
+    return res.json({
+      categories: result.rows.map((row) => ({
+        id: row.id,
+        clientId: row.client_id,
+        name: row.name,
+        slug: row.slug,
+        displayOrder: row.display_order,
+        isActive: row.is_active,
+        programCount: Number(row.program_count || 0),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      }))
+    });
+  } catch (error) {
+    console.error("Categories list error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Create a new category
+app.post("/api/super/clients/:clientId/categories", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { clientId } = req.params;
+    const { name, slug, displayOrder } = req.body;
+
+    if (!name || !slug) {
+      return res.status(400).json({ error: "Name and slug are required" });
+    }
+
+    // Check if slug already exists for this client
+    const existing = await pool.query(
+      "SELECT id FROM program_categories WHERE client_id = $1 AND slug = $2",
+      [clientId, slug]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: "Category with this slug already exists" });
+    }
+
+    const categoryId = uuidv4();
+    await pool.query(
+      `INSERT INTO program_categories (id, client_id, name, slug, display_order, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+      [categoryId, clientId, name, slug, displayOrder || 0]
+    );
+
+    invalidateConfigCache(clientId);
+
+    return res.status(201).json({ id: categoryId });
+  } catch (error) {
+    console.error("Category create error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get a single category
+app.get("/api/super/clients/:clientId/categories/:categoryId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { clientId, categoryId } = req.params;
+
+    const result = await pool.query(
+      "SELECT * FROM program_categories WHERE id = $1 AND client_id = $2",
+      [categoryId, clientId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Category not found" });
+    }
+
+    const row = result.rows[0];
+    return res.json({
+      category: {
+        id: row.id,
+        clientId: row.client_id,
+        name: row.name,
+        slug: row.slug,
+        displayOrder: row.display_order,
+        isActive: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      }
+    });
+  } catch (error) {
+    console.error("Category get error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Update a category
+app.patch("/api/super/clients/:clientId/categories/:categoryId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { clientId, categoryId } = req.params;
+    const { name, slug, displayOrder, isActive } = req.body;
+
+    // Verify category exists
+    const existing = await pool.query(
+      "SELECT id FROM program_categories WHERE id = $1 AND client_id = $2",
+      [categoryId, clientId]
+    );
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: "Category not found" });
+    }
+
+    // If slug is being changed, check for conflicts
+    if (slug) {
+      const conflict = await pool.query(
+        "SELECT id FROM program_categories WHERE client_id = $1 AND slug = $2 AND id != $3",
+        [clientId, slug, categoryId]
+      );
+
+      if (conflict.rows.length > 0) {
+        return res.status(409).json({ error: "Category with this slug already exists" });
+      }
+    }
+
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${paramCount++}`);
+      values.push(name);
+    }
+    if (slug !== undefined) {
+      updates.push(`slug = $${paramCount++}`);
+      values.push(slug);
+    }
+    if (displayOrder !== undefined) {
+      updates.push(`display_order = $${paramCount++}`);
+      values.push(displayOrder);
+    }
+    if (isActive !== undefined) {
+      updates.push(`is_active = $${paramCount++}`);
+      values.push(isActive);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(categoryId, clientId);
+
+    await pool.query(
+      `UPDATE program_categories SET ${updates.join(", ")} WHERE id = $${paramCount++} AND client_id = $${paramCount++}`,
+      values
+    );
+
+    invalidateConfigCache(clientId);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Category update error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Delete a category
+app.delete("/api/super/clients/:clientId/categories/:categoryId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { clientId, categoryId } = req.params;
+
+    // Check if any programs are using this category
+    const programCheck = await pool.query(
+      "SELECT COUNT(*) as count FROM programs WHERE category_id = $1",
+      [categoryId]
+    );
+
+    if (Number(programCheck.rows[0]?.count || 0) > 0) {
+      return res.status(409).json({
+        error: "Cannot delete category with associated programs. Remove programs first or reassign them."
+      });
+    }
+
+    const result = await pool.query(
+      "DELETE FROM program_categories WHERE id = $1 AND client_id = $2",
+      [categoryId, clientId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Category not found" });
+    }
+
+    invalidateConfigCache(clientId);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Category delete error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ============================================================================
+// QUIZ STAGES API (Super Admin)
+// ============================================================================
+
+// List all stages for a client/school
+app.get("/api/super/clients/:clientId/quiz/stages", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { clientId } = req.params;
+    const { schoolId } = req.query;
+
+    let query = `
+      SELECT qs.*,
+             pc.name AS category_name,
+             COUNT(DISTINCT qq.id) AS question_count
+      FROM quiz_stages qs
+      LEFT JOIN program_categories pc ON pc.id = qs.category_id
+      LEFT JOIN quiz_questions qq ON qq.stage_id = qs.id AND qq.is_active = true
+      WHERE qs.client_id = $1
+    `;
+    const params: any[] = [clientId];
+
+    if (schoolId) {
+      query += ` AND (qs.school_id IS NULL OR qs.school_id = $2)`;
+      params.push(schoolId);
+    }
+
+    query += ` GROUP BY qs.id, pc.name ORDER BY qs.display_order, qs.name`;
+
+    const result = await pool.query(query, params);
+
+    return res.json({
+      stages: result.rows.map((row) => ({
+        id: row.id,
+        clientId: row.client_id,
+        schoolId: row.school_id,
+        categoryId: row.category_id,
+        categoryName: row.category_name,
+        name: row.name,
+        slug: row.slug,
+        description: row.description,
+        displayOrder: row.display_order,
+        isActive: row.is_active,
+        questionCount: Number(row.question_count || 0),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      }))
+    });
+  } catch (error) {
+    console.error("Quiz stages list error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Create a new stage
+app.post("/api/super/clients/:clientId/quiz/stages", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { clientId } = req.params;
+    const { schoolId, categoryId, name, slug, description, displayOrder } = req.body;
+
+    if (!name || !slug) {
+      return res.status(400).json({ error: "Name and slug are required" });
+    }
+
+    const stageId = uuidv4();
+    await pool.query(
+      `INSERT INTO quiz_stages
+       (id, client_id, school_id, category_id, name, slug, description, display_order, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
+      [stageId, clientId, schoolId || null, categoryId || null, name, slug, description || null, displayOrder || 0]
+    );
+
+    invalidateConfigCache(clientId);
+
+    return res.status(201).json({ id: stageId });
+  } catch (error) {
+    console.error("Quiz stage create error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get a single stage
+app.get("/api/super/clients/:clientId/quiz/stages/:stageId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { clientId, stageId } = req.params;
+
+    const result = await pool.query(
+      `SELECT qs.*, pc.name AS category_name
+       FROM quiz_stages qs
+       LEFT JOIN program_categories pc ON pc.id = qs.category_id
+       WHERE qs.id = $1 AND qs.client_id = $2`,
+      [stageId, clientId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Stage not found" });
+    }
+
+    const row = result.rows[0];
+    return res.json({
+      stage: {
+        id: row.id,
+        clientId: row.client_id,
+        schoolId: row.school_id,
+        categoryId: row.category_id,
+        categoryName: row.category_name,
+        name: row.name,
+        slug: row.slug,
+        description: row.description,
+        displayOrder: row.display_order,
+        isActive: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      }
+    });
+  } catch (error) {
+    console.error("Quiz stage get error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Update a stage
+app.patch("/api/super/clients/:clientId/quiz/stages/:stageId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { clientId, stageId } = req.params;
+    const { schoolId, categoryId, name, slug, description, displayOrder, isActive } = req.body;
+
+    // Verify stage exists
+    const existing = await pool.query(
+      "SELECT id FROM quiz_stages WHERE id = $1 AND client_id = $2",
+      [stageId, clientId]
+    );
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: "Stage not found" });
+    }
+
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (schoolId !== undefined) {
+      updates.push(`school_id = $${paramCount++}`);
+      values.push(schoolId || null);
+    }
+    if (categoryId !== undefined) {
+      updates.push(`category_id = $${paramCount++}`);
+      values.push(categoryId || null);
+    }
+    if (name !== undefined) {
+      updates.push(`name = $${paramCount++}`);
+      values.push(name);
+    }
+    if (slug !== undefined) {
+      updates.push(`slug = $${paramCount++}`);
+      values.push(slug);
+    }
+    if (description !== undefined) {
+      updates.push(`description = $${paramCount++}`);
+      values.push(description);
+    }
+    if (displayOrder !== undefined) {
+      updates.push(`display_order = $${paramCount++}`);
+      values.push(displayOrder);
+    }
+    if (isActive !== undefined) {
+      updates.push(`is_active = $${paramCount++}`);
+      values.push(isActive);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(stageId, clientId);
+
+    await pool.query(
+      `UPDATE quiz_stages SET ${updates.join(", ")} WHERE id = $${paramCount++} AND client_id = $${paramCount++}`,
+      values
+    );
+
+    invalidateConfigCache(clientId);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Quiz stage update error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Delete a stage
+app.delete("/api/super/clients/:clientId/quiz/stages/:stageId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { clientId, stageId } = req.params;
+
+    // Check if any questions are using this stage
+    const questionCheck = await pool.query(
+      "SELECT COUNT(*) as count FROM quiz_questions WHERE stage_id = $1",
+      [stageId]
+    );
+
+    if (Number(questionCheck.rows[0]?.count || 0) > 0) {
+      return res.status(409).json({
+        error: "Cannot delete stage with questions. Delete questions first."
+      });
+    }
+
+    const result = await pool.query(
+      "DELETE FROM quiz_stages WHERE id = $1 AND client_id = $2",
+      [stageId, clientId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Stage not found" });
+    }
+
+    invalidateConfigCache(clientId);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Quiz stage delete error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ============================================================================
+// QUIZ QUESTIONS API (Super Admin)
+// ============================================================================
+
+// Get all questions for a stage
+app.get("/api/super/quiz/stages/:stageId/questions", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { stageId } = req.params;
+
+    // Get questions with their options
+    const questions = await pool.query(
+      `SELECT qq.*, qs.client_id
+       FROM quiz_questions qq
+       JOIN quiz_stages qs ON qs.id = qq.stage_id
+       WHERE qq.stage_id = $1
+       ORDER BY qq.display_order, qq.created_at`,
+      [stageId]
+    );
+
+    const questionIds = questions.rows.map((q) => q.id);
+    let options: any[] = [];
+
+    if (questionIds.length > 0) {
+      const optionsResult = await pool.query(
+        `SELECT * FROM quiz_answer_options
+         WHERE question_id = ANY($1)
+         ORDER BY question_id, display_order`,
+        [questionIds]
+      );
+      options = optionsResult.rows;
+    }
+
+    return res.json({
+      questions: questions.rows.map((q) => ({
+        id: q.id,
+        stageId: q.stage_id,
+        questionText: q.question_text,
+        questionType: q.question_type,
+        helpText: q.help_text,
+        displayOrder: q.display_order,
+        isContactField: q.is_contact_field,
+        contactFieldType: q.contact_field_type,
+        disqualifiesLead: q.disqualifies_lead,
+        disqualificationReason: q.disqualification_reason,
+        conditionalOn: q.conditional_on,
+        isActive: q.is_active,
+        options: options
+          .filter((o) => o.question_id === q.id)
+          .map((o) => ({
+            id: o.id,
+            optionText: o.option_text,
+            displayOrder: o.display_order,
+            pointAssignments: o.point_assignments || {},
+            categoryPoints: o.category_points || {},
+            disqualifiesLead: o.disqualifies_lead,
+            disqualificationReason: o.disqualification_reason,
+            routesToProgramId: o.routes_to_program_id
+          }))
+      }))
+    });
+  } catch (error) {
+    console.error("Quiz questions list error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Create a new question
+app.post("/api/super/quiz/stages/:stageId/questions", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { stageId } = req.params;
+    const {
+      questionText,
+      questionType,
+      helpText,
+      displayOrder,
+      isContactField,
+      contactFieldType,
+      disqualifiesLead,
+      disqualificationReason
+    } = req.body;
+
+    if (!questionText || !questionType) {
+      return res.status(400).json({ error: "Question text and type are required" });
+    }
+
+    // Get client_id from stage
+    const stageResult = await pool.query(
+      "SELECT client_id FROM quiz_stages WHERE id = $1",
+      [stageId]
+    );
+
+    if (stageResult.rows.length === 0) {
+      return res.status(404).json({ error: "Stage not found" });
+    }
+
+    const clientId = stageResult.rows[0].client_id;
+    const questionId = uuidv4();
+
+    await pool.query(
+      `INSERT INTO quiz_questions
+       (id, client_id, stage_id, question_text, question_type, help_text, display_order,
+        is_contact_field, contact_field_type, disqualifies_lead, disqualification_reason, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())`,
+      [
+        questionId,
+        clientId,
+        stageId,
+        questionText,
+        questionType,
+        helpText || null,
+        displayOrder || 0,
+        isContactField || false,
+        contactFieldType || null,
+        disqualifiesLead || false,
+        disqualificationReason || null
+      ]
+    );
+
+    invalidateConfigCache(clientId);
+
+    return res.status(201).json({ id: questionId });
+  } catch (error) {
+    console.error("Quiz question create error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Update a question
+app.patch("/api/super/quiz/questions/:questionId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { questionId } = req.params;
+    const {
+      questionText,
+      questionType,
+      helpText,
+      displayOrder,
+      isContactField,
+      contactFieldType,
+      disqualifiesLead,
+      disqualificationReason,
+      isActive
+    } = req.body;
+
+    // Get client_id for cache invalidation
+    const existing = await pool.query(
+      "SELECT client_id FROM quiz_questions WHERE id = $1",
+      [questionId]
+    );
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: "Question not found" });
+    }
+
+    const clientId = existing.rows[0].client_id;
+
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (questionText !== undefined) {
+      updates.push(`question_text = $${paramCount++}`);
+      values.push(questionText);
+    }
+    if (questionType !== undefined) {
+      updates.push(`question_type = $${paramCount++}`);
+      values.push(questionType);
+    }
+    if (helpText !== undefined) {
+      updates.push(`help_text = $${paramCount++}`);
+      values.push(helpText);
+    }
+    if (displayOrder !== undefined) {
+      updates.push(`display_order = $${paramCount++}`);
+      values.push(displayOrder);
+    }
+    if (isContactField !== undefined) {
+      updates.push(`is_contact_field = $${paramCount++}`);
+      values.push(isContactField);
+    }
+    if (contactFieldType !== undefined) {
+      updates.push(`contact_field_type = $${paramCount++}`);
+      values.push(contactFieldType);
+    }
+    if (disqualifiesLead !== undefined) {
+      updates.push(`disqualifies_lead = $${paramCount++}`);
+      values.push(disqualifiesLead);
+    }
+    if (disqualificationReason !== undefined) {
+      updates.push(`disqualification_reason = $${paramCount++}`);
+      values.push(disqualificationReason);
+    }
+    if (isActive !== undefined) {
+      updates.push(`is_active = $${paramCount++}`);
+      values.push(isActive);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(questionId);
+
+    await pool.query(
+      `UPDATE quiz_questions SET ${updates.join(", ")} WHERE id = $${paramCount++}`,
+      values
+    );
+
+    invalidateConfigCache(clientId);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Quiz question update error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Delete a question
+app.delete("/api/super/quiz/questions/:questionId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { questionId } = req.params;
+
+    // Get client_id before deletion
+    const existing = await pool.query(
+      "SELECT client_id FROM quiz_questions WHERE id = $1",
+      [questionId]
+    );
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: "Question not found" });
+    }
+
+    const clientId = existing.rows[0].client_id;
+
+    // Options will be cascade deleted
+    const result = await pool.query(
+      "DELETE FROM quiz_questions WHERE id = $1",
+      [questionId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Question not found" });
+    }
+
+    invalidateConfigCache(clientId);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Quiz question delete error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ============================================================================
+// QUIZ ANSWER OPTIONS API (Super Admin)
+// ============================================================================
+
+// Create a new option
+app.post("/api/super/quiz/questions/:questionId/options", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { questionId } = req.params;
+    const {
+      optionText,
+      displayOrder,
+      pointAssignments,
+      categoryPoints,
+      disqualifiesLead,
+      disqualificationReason,
+      routesToProgramId
+    } = req.body;
+
+    if (!optionText) {
+      return res.status(400).json({ error: "Option text is required" });
+    }
+
+    // Get client_id from question
+    const questionResult = await pool.query(
+      "SELECT client_id FROM quiz_questions WHERE id = $1",
+      [questionId]
+    );
+
+    if (questionResult.rows.length === 0) {
+      return res.status(404).json({ error: "Question not found" });
+    }
+
+    const clientId = questionResult.rows[0].client_id;
+    const optionId = uuidv4();
+
+    await pool.query(
+      `INSERT INTO quiz_answer_options
+       (id, client_id, question_id, option_text, display_order, point_assignments, category_points,
+        disqualifies_lead, disqualification_reason, routes_to_program_id, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())`,
+      [
+        optionId,
+        clientId,
+        questionId,
+        optionText,
+        displayOrder || 0,
+        JSON.stringify(pointAssignments || {}),
+        JSON.stringify(categoryPoints || {}),
+        disqualifiesLead || false,
+        disqualificationReason || null,
+        routesToProgramId || null
+      ]
+    );
+
+    invalidateConfigCache(clientId);
+
+    return res.status(201).json({ id: optionId });
+  } catch (error) {
+    console.error("Quiz option create error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Update an option
+app.patch("/api/super/quiz/options/:optionId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { optionId } = req.params;
+    const {
+      optionText,
+      displayOrder,
+      pointAssignments,
+      categoryPoints,
+      disqualifiesLead,
+      disqualificationReason,
+      routesToProgramId
+    } = req.body;
+
+    // Get client_id for cache invalidation
+    const existing = await pool.query(
+      "SELECT client_id FROM quiz_answer_options WHERE id = $1",
+      [optionId]
+    );
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: "Option not found" });
+    }
+
+    const clientId = existing.rows[0].client_id;
+
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (optionText !== undefined) {
+      updates.push(`option_text = $${paramCount++}`);
+      values.push(optionText);
+    }
+    if (displayOrder !== undefined) {
+      updates.push(`display_order = $${paramCount++}`);
+      values.push(displayOrder);
+    }
+    if (pointAssignments !== undefined) {
+      updates.push(`point_assignments = $${paramCount++}`);
+      values.push(JSON.stringify(pointAssignments));
+    }
+    if (categoryPoints !== undefined) {
+      updates.push(`category_points = $${paramCount++}`);
+      values.push(JSON.stringify(categoryPoints));
+    }
+    if (disqualifiesLead !== undefined) {
+      updates.push(`disqualifies_lead = $${paramCount++}`);
+      values.push(disqualifiesLead);
+    }
+    if (disqualificationReason !== undefined) {
+      updates.push(`disqualification_reason = $${paramCount++}`);
+      values.push(disqualificationReason);
+    }
+    if (routesToProgramId !== undefined) {
+      updates.push(`routes_to_program_id = $${paramCount++}`);
+      values.push(routesToProgramId);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    updates.push(`updated_at = NOW()`);
+    values.push(optionId);
+
+    await pool.query(
+      `UPDATE quiz_answer_options SET ${updates.join(", ")} WHERE id = $${paramCount++}`,
+      values
+    );
+
+    invalidateConfigCache(clientId);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Quiz option update error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Delete an option
+app.delete("/api/super/quiz/options/:optionId", async (req, res) => {
+  try {
+    const auth = res.locals.auth as AuthContext | null;
+    const authCheck = requireSuperAdmin(auth);
+    if (!authCheck.ok) {
+      return res.status(authCheck.status).json({ error: authCheck.error });
+    }
+
+    const { optionId } = req.params;
+
+    // Get client_id before deletion
+    const existing = await pool.query(
+      "SELECT client_id FROM quiz_answer_options WHERE id = $1",
+      [optionId]
+    );
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: "Option not found" });
+    }
+
+    const clientId = existing.rows[0].client_id;
+
+    const result = await pool.query(
+      "DELETE FROM quiz_answer_options WHERE id = $1",
+      [optionId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Option not found" });
+    }
+
+    invalidateConfigCache(clientId);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Quiz option delete error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ============================================================================
+// PUBLIC QUIZ SESSION API
+// ============================================================================
+
+// Start a new quiz session
+app.post("/api/public/quiz/sessions", async (req, res) => {
+  try {
+    const { schoolId } = req.body;
+
+    if (!schoolId) {
+      return res.status(400).json({ error: "School ID is required" });
+    }
+
+    // Get school details
+    const schoolResult = await pool.query(
+      "SELECT client_id FROM schools WHERE id = $1",
+      [schoolId]
+    );
+
+    if (schoolResult.rows.length === 0) {
+      return res.status(404).json({ error: "School not found" });
+    }
+
+    const clientId = schoolResult.rows[0].client_id;
+
+    // Get first stage
+    const stagesResult = await pool.query(
+      `SELECT id, display_order FROM quiz_stages
+       WHERE client_id = $1 AND (school_id IS NULL OR school_id = $2) AND is_active = true
+       ORDER BY display_order
+       LIMIT 1`,
+      [clientId, schoolId]
+    );
+
+    const currentStageId = stagesResult.rows.length > 0 ? stagesResult.rows[0].id : null;
+    const currentStageOrder = stagesResult.rows.length > 0 ? stagesResult.rows[0].display_order : 0;
+
+    const sessionId = uuidv4();
+    await pool.query(
+      `INSERT INTO quiz_sessions
+       (id, client_id, school_id, current_stage_id, current_stage_order, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+      [sessionId, clientId, schoolId, currentStageId, currentStageOrder]
+    );
+
+    return res.status(201).json({ sessionId });
+  } catch (error) {
+    console.error("Quiz session start error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get next question for session
+app.get("/api/public/quiz/sessions/:sessionId/next", async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Get session
+    const sessionResult = await pool.query(
+      "SELECT * FROM quiz_sessions WHERE id = $1",
+      [sessionId]
+    );
+
+    if (sessionResult.rows.length === 0) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    const session = sessionResult.rows[0];
+
+    if (session.completed_at) {
+      return res.json({ completed: true, session });
+    }
+
+    if (!session.current_stage_id) {
+      return res.json({ completed: true, message: "No stages configured" });
+    }
+
+    // Get answered question IDs for current stage
+    const answers = session.answers || {};
+    const answeredQuestionIds = Object.keys(answers);
+
+    // Get next unanswered question in current stage
+    let nextQuestionQuery = `
+      SELECT qq.*, qs.slug AS stage_slug
+      FROM quiz_questions qq
+      JOIN quiz_stages qs ON qs.id = qq.stage_id
+      WHERE qq.stage_id = $1 AND qq.is_active = true
+    `;
+    const params: any[] = [session.current_stage_id];
+
+    if (answeredQuestionIds.length > 0) {
+      nextQuestionQuery += ` AND qq.id NOT IN (${answeredQuestionIds.map((_, i) => `$${i + 2}`).join(", ")})`;
+      params.push(...answeredQuestionIds);
+    }
+
+    nextQuestionQuery += ` ORDER BY qq.display_order LIMIT 1`;
+
+    const questionResult = await pool.query(nextQuestionQuery, params);
+
+    if (questionResult.rows.length === 0) {
+      // No more questions in current stage, check if there's a next stage
+      const nextStageResult = await pool.query(
+        `SELECT id, display_order FROM quiz_stages
+         WHERE client_id = $1
+         AND (school_id IS NULL OR school_id = $2)
+         AND is_active = true
+         AND display_order > $3
+         ORDER BY display_order
+         LIMIT 1`,
+        [session.client_id, session.school_id, session.current_stage_order]
+      );
+
+      if (nextStageResult.rows.length === 0) {
+        // Quiz complete
+        return res.json({
+          completed: true,
+          recommendedProgramId: session.recommended_program_id,
+          isDisqualified: session.is_disqualified,
+          disqualificationReasons: session.disqualification_reasons
+        });
+      }
+
+      // Move to next stage
+      const nextStage = nextStageResult.rows[0];
+      await pool.query(
+        `UPDATE quiz_sessions
+         SET current_stage_id = $1, current_stage_order = $2, updated_at = NOW()
+         WHERE id = $3`,
+        [nextStage.id, nextStage.display_order, sessionId]
+      );
+
+      // Get first question of next stage
+      const firstQuestionResult = await pool.query(
+        `SELECT qq.*, qs.slug AS stage_slug
+         FROM quiz_questions qq
+         JOIN quiz_stages qs ON qs.id = qq.stage_id
+         WHERE qq.stage_id = $1 AND qq.is_active = true
+         ORDER BY qq.display_order
+         LIMIT 1`,
+        [nextStage.id]
+      );
+
+      if (firstQuestionResult.rows.length === 0) {
+        return res.json({ completed: true, message: "No questions in next stage" });
+      }
+
+      const question = firstQuestionResult.rows[0];
+
+      // Get options
+      const optionsResult = await pool.query(
+        `SELECT * FROM quiz_answer_options
+         WHERE question_id = $1
+         ORDER BY display_order`,
+        [question.id]
+      );
+
+      return res.json({
+        question: {
+          id: question.id,
+          stageSlug: question.stage_slug,
+          questionText: question.question_text,
+          questionType: question.question_type,
+          helpText: question.help_text,
+          isContactField: question.is_contact_field,
+          contactFieldType: question.contact_field_type,
+          options: optionsResult.rows.map((o) => ({
+            id: o.id,
+            optionText: o.option_text
+          }))
+        }
+      });
+    }
+
+    const question = questionResult.rows[0];
+
+    // Get options (hide scoring info from public)
+    const optionsResult = await pool.query(
+      `SELECT id, option_text, display_order
+       FROM quiz_answer_options
+       WHERE question_id = $1
+       ORDER BY display_order`,
+      [question.id]
+    );
+
+    return res.json({
+      question: {
+        id: question.id,
+        stageSlug: question.stage_slug,
+        questionText: question.question_text,
+        questionType: question.question_type,
+        helpText: question.help_text,
+        isContactField: question.is_contact_field,
+        contactFieldType: question.contact_field_type,
+        options: optionsResult.rows.map((o) => ({
+          id: o.id,
+          optionText: o.option_text
+        }))
+      }
+    });
+  } catch (error) {
+    console.error("Quiz next question error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Submit an answer
+app.post("/api/public/quiz/sessions/:sessionId/answer", async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { questionId, optionId, textAnswer } = req.body;
+
+    if (!questionId) {
+      return res.status(400).json({ error: "Question ID is required" });
+    }
+
+    // Get session
+    const sessionResult = await pool.query(
+      "SELECT * FROM quiz_sessions WHERE id = $1",
+      [sessionId]
+    );
+
+    if (sessionResult.rows.length === 0) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    const session = sessionResult.rows[0];
+    const answers = session.answers || {};
+    const categoryScores = session.category_scores || {};
+    const programScores = session.program_scores || {};
+    const contactInfo = session.contact_info || {};
+    let disqualificationReasons = session.disqualification_reasons || [];
+    let isDisqualified = session.is_disqualified;
+
+    // Get question details
+    const questionResult = await pool.query(
+      "SELECT * FROM quiz_questions WHERE id = $1",
+      [questionId]
+    );
+
+    if (questionResult.rows.length === 0) {
+      return res.status(404).json({ error: "Question not found" });
+    }
+
+    const question = questionResult.rows[0];
+
+    // Store answer
+    if (question.is_contact_field && question.contact_field_type) {
+      contactInfo[question.contact_field_type] = textAnswer || optionId;
+    }
+
+    answers[questionId] = optionId || textAnswer;
+
+    // If option provided, process scoring and routing
+    if (optionId) {
+      const optionResult = await pool.query(
+        "SELECT * FROM quiz_answer_options WHERE id = $1",
+        [optionId]
+      );
+
+      if (optionResult.rows.length > 0) {
+        const option = optionResult.rows[0];
+
+        // Check disqualification
+        if (option.disqualifies_lead) {
+          isDisqualified = true;
+          if (option.disqualification_reason) {
+            disqualificationReasons.push(option.disqualification_reason);
+          }
+        }
+
+        // Add category points
+        const categoryPoints = option.category_points || {};
+        for (const [categoryId, points] of Object.entries(categoryPoints)) {
+          categoryScores[categoryId] = (categoryScores[categoryId] || 0) + (points as number);
+        }
+
+        // Add program points
+        const programPoints = option.point_assignments || {};
+        for (const [programId, points] of Object.entries(programPoints)) {
+          programScores[programId] = (programScores[programId] || 0) + (points as number);
+        }
+
+        // Check for direct program routing
+        if (option.routes_to_program_id) {
+          await pool.query(
+            `UPDATE quiz_sessions
+             SET answers = $1, contact_info = $2, category_scores = $3, program_scores = $4,
+                 is_disqualified = $5, disqualification_reasons = $6,
+                 recommended_program_id = $7, updated_at = NOW()
+             WHERE id = $8`,
+            [
+              JSON.stringify(answers),
+              JSON.stringify(contactInfo),
+              JSON.stringify(categoryScores),
+              JSON.stringify(programScores),
+              isDisqualified,
+              JSON.stringify(disqualificationReasons),
+              option.routes_to_program_id,
+              sessionId
+            ]
+          );
+
+          return res.json({ success: true, directRoute: option.routes_to_program_id });
+        }
+      }
+    }
+
+    // Determine recommended program based on scores
+    let recommendedProgramId = null;
+    if (Object.keys(programScores).length > 0) {
+      const sortedPrograms = Object.entries(programScores)
+        .sort(([, a], [, b]) => (b as number) - (a as number));
+      recommendedProgramId = sortedPrograms[0][0];
+    }
+
+    // Update session
+    await pool.query(
+      `UPDATE quiz_sessions
+       SET answers = $1, contact_info = $2, category_scores = $3, program_scores = $4,
+           is_disqualified = $5, disqualification_reasons = $6,
+           recommended_program_id = $7, updated_at = NOW()
+       WHERE id = $8`,
+      [
+        JSON.stringify(answers),
+        JSON.stringify(contactInfo),
+        JSON.stringify(categoryScores),
+        JSON.stringify(programScores),
+        isDisqualified,
+        JSON.stringify(disqualificationReasons),
+        recommendedProgramId,
+        sessionId
+      ]
+    );
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error("Quiz answer submit error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Submit final quiz (create lead)
+app.post("/api/public/quiz/sessions/:sessionId/submit", async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { selectedProgramId, financialAidInterested } = req.body;
+
+    // Get session
+    const sessionResult = await pool.query(
+      "SELECT * FROM quiz_sessions WHERE id = $1",
+      [sessionId]
+    );
+
+    if (sessionResult.rows.length === 0) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    const session = sessionResult.rows[0];
+    const contactInfo = session.contact_info || {};
+
+    // Validate required contact info
+    if (!contactInfo.first_name || !contactInfo.last_name || !contactInfo.email) {
+      return res.status(400).json({ error: "Missing required contact information" });
+    }
+
+    const finalProgramId = selectedProgramId || session.recommended_program_id;
+
+    if (!finalProgramId) {
+      return res.status(400).json({ error: "No program selected" });
+    }
+
+    // Create lead
+    const leadId = uuidv4();
+    await pool.query(
+      `INSERT INTO leads
+       (id, client_id, school_id, program_id, first_name, last_name, email, phone,
+        answers, quiz_session_id, is_qualified, disqualification_reasons, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`,
+      [
+        leadId,
+        session.client_id,
+        session.school_id,
+        finalProgramId,
+        contactInfo.first_name,
+        contactInfo.last_name,
+        contactInfo.email,
+        contactInfo.phone || null,
+        session.answers,
+        sessionId,
+        !session.is_disqualified,
+        session.disqualification_reasons
+      ]
+    );
+
+    // Mark session as completed
+    await pool.query(
+      `UPDATE quiz_sessions
+       SET completed_at = NOW(), selected_program_id = $1, financial_aid_interested = $2, updated_at = NOW()
+       WHERE id = $3`,
+      [finalProgramId, financialAidInterested || false, sessionId]
+    );
+
+    return res.status(201).json({ leadId, success: true });
+  } catch (error) {
+    console.error("Quiz submit error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.post("/api/lead/start", async (req, res) => {
   try {
     const parseResult = StartSchema.safeParse(req.body);
