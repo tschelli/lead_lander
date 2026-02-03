@@ -4337,23 +4337,34 @@ app.post("/api/public/quiz/sessions/:sessionId/submit", async (req, res) => {
       return res.status(400).json({ error: "No program selected" });
     }
 
-    // Create lead
-    const leadId = uuidv4();
+    // Get campus ID (use first available or default)
+    const campusId = contactInfo.campus || "default";
+
+    // Create submission
+    const submissionId = uuidv4();
+    const idempotencyKey = `quiz_${sessionId}_${Date.now()}`;
+
     await pool.query(
-      `INSERT INTO leads
-       (id, client_id, school_id, program_id, first_name, last_name, email, phone,
-        answers, quiz_session_id, is_qualified, disqualification_reasons, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`,
+      `INSERT INTO submissions
+       (id, school_id, campus_id, program_id, first_name, last_name, email, phone,
+        answers, status, idempotency_key, consented, consent_text_version, consent_timestamp,
+        quiz_session_id, is_qualified, disqualification_reasons, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())`,
       [
-        leadId,
-        session.client_id,
+        submissionId,
         session.school_id,
+        campusId,
         finalProgramId,
         contactInfo.first_name,
         contactInfo.last_name,
         contactInfo.email,
         contactInfo.phone || null,
         session.answers,
+        "pending",
+        idempotencyKey,
+        true, // consented
+        "quiz_v1",
+        new Date(),
         sessionId,
         !session.is_disqualified,
         session.disqualification_reasons
@@ -4368,7 +4379,7 @@ app.post("/api/public/quiz/sessions/:sessionId/submit", async (req, res) => {
       [finalProgramId, financialAidInterested || false, sessionId]
     );
 
-    return res.status(201).json({ leadId, success: true });
+    return res.status(201).json({ submissionId, success: true });
   } catch (error) {
     console.error("Quiz submit error", error);
     return res.status(500).json({ error: "Internal server error" });

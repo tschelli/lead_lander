@@ -21,7 +21,7 @@ type QuizFlowProps = {
   schoolId: string;
   defaultProgramId?: string;
   apiBaseUrl: string;
-  onComplete: (leadId: string) => void;
+  onComplete: (submissionId: string) => void;
 };
 
 export function QuizFlow({ schoolId, defaultProgramId, apiBaseUrl, onComplete }: QuizFlowProps) {
@@ -177,7 +177,7 @@ export function QuizFlow({ schoolId, defaultProgramId, apiBaseUrl, onComplete }:
       }
 
       const data = await res.json();
-      onComplete(data.leadId);
+      onComplete(data.submissionId);
     } catch (err) {
       setError((err as Error).message);
     } finally {

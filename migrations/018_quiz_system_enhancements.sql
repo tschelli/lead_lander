@@ -136,21 +136,21 @@ COMMENT ON COLUMN quiz_sessions.program_scores IS 'Accumulated points per progra
 COMMENT ON COLUMN quiz_sessions.selected_program_id IS 'Program user manually selected (overrides recommendation)';
 
 -- ============================================================================
--- 6. ENHANCED LEADS TABLE
+-- 6. ENHANCED SUBMISSIONS TABLE
 -- ============================================================================
 
--- Add quiz session tracking to leads
-ALTER TABLE leads
+-- Add quiz session tracking to submissions
+ALTER TABLE submissions
   ADD COLUMN quiz_session_id UUID REFERENCES quiz_sessions(id) ON DELETE SET NULL,
   ADD COLUMN is_qualified BOOLEAN DEFAULT true,
   ADD COLUMN disqualification_reasons JSONB DEFAULT '[]'::jsonb;
 
-CREATE INDEX idx_leads_quiz_session ON leads(quiz_session_id);
-CREATE INDEX idx_leads_qualified ON leads(is_qualified);
+CREATE INDEX idx_submissions_quiz_session ON submissions(quiz_session_id);
+CREATE INDEX idx_submissions_qualified ON submissions(is_qualified);
 
-COMMENT ON COLUMN leads.quiz_session_id IS 'Quiz session that generated this lead';
-COMMENT ON COLUMN leads.is_qualified IS 'Whether lead met qualification criteria';
-COMMENT ON COLUMN leads.disqualification_reasons IS 'Array of reasons if disqualified';
+COMMENT ON COLUMN submissions.quiz_session_id IS 'Quiz session that generated this submission';
+COMMENT ON COLUMN submissions.is_qualified IS 'Whether lead met qualification criteria';
+COMMENT ON COLUMN submissions.disqualification_reasons IS 'Array of reasons if disqualified';
 
 -- ============================================================================
 -- 7. AUDIT TRIGGERS
