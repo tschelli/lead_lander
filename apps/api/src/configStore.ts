@@ -93,10 +93,10 @@ export function createConfigStore(pool: Pool): ConfigStore {
           salaryRange: row.salary_range || undefined,
           placementRate: row.placement_rate || undefined,
           graduationRate: row.graduation_rate || undefined,
-          highlights: row.highlights || [],
-          testimonials: row.testimonials || [],
-          faqs: row.faqs || [],
-          stats: row.stats || {},
+          highlights: Array.isArray(row.highlights) ? row.highlights : [],
+          testimonials: Array.isArray(row.testimonials) ? row.testimonials : [],
+          faqs: Array.isArray(row.faqs) ? row.faqs : [],
+          stats: row.stats && typeof row.stats === "object" && !Array.isArray(row.stats) ? row.stats : {},
           sectionsConfig: row.sections_config || {
             order: ["hero", "highlights", "stats", "testimonials", "form", "faqs"],
             visible: {
