@@ -1,7 +1,13 @@
 import fs from "fs";
 import path from "path";
 import YAML from "yaml";
-import { ConfigSchema, type Config, type Campus, type LandingPage, type Program, type School } from "./schema";
+import {
+  ConfigSchema,
+  type Config,
+  type Account,
+  type Location,
+  type Program
+} from "./schema";
 
 const SUPPORTED_EXTENSIONS = [".yml", ".yaml", ".json"];
 
@@ -11,13 +17,16 @@ export function loadConfig(configDir: string): Config {
     .filter((file) => SUPPORTED_EXTENSIONS.includes(path.extname(file)));
 
   const merged: Config = {
-    schools: [],
-    campuses: [],
+    clients: [],
+    accounts: [],
+    locations: [],
     programs: [],
-    landingPages: [],
     crmConnections: [],
     quizQuestions: [],
-    quizAnswerOptions: []
+    quizAnswerOptions: [],
+    landingPageQuestions: [],
+    landingPageQuestionOptions: [],
+    webhookConfigs: []
   };
 
   for (const file of files) {
@@ -26,13 +35,16 @@ export function loadConfig(configDir: string): Config {
     const parsed = parseConfigFile(raw, path.extname(file));
     const validated = ConfigSchema.parse(parsed);
 
-    merged.schools.push(...validated.schools);
-    merged.campuses.push(...validated.campuses);
-    merged.programs.push(...validated.programs);
-    merged.landingPages.push(...validated.landingPages);
-    merged.crmConnections.push(...validated.crmConnections);
+    merged.clients.push(...(validated.clients || []));
+    merged.accounts.push(...(validated.accounts || []));
+    merged.locations.push(...(validated.locations || []));
+    merged.programs.push(...(validated.programs || []));
+    merged.crmConnections.push(...(validated.crmConnections || []));
     merged.quizQuestions.push(...(validated.quizQuestions || []));
     merged.quizAnswerOptions.push(...(validated.quizAnswerOptions || []));
+    merged.landingPageQuestions.push(...(validated.landingPageQuestions || []));
+    merged.landingPageQuestionOptions.push(...(validated.landingPageQuestionOptions || []));
+    merged.webhookConfigs.push(...(validated.webhookConfigs || []));
   }
 
   return merged;
@@ -46,67 +58,93 @@ function parseConfigFile(raw: string, ext: string) {
   return YAML.parse(raw);
 }
 
-export type ResolvedLandingPage = {
-  school: School;
-  program: Program;
-  landingPage: LandingPage;
-  landingCopy: Program["landingCopy"];
-  questionOverrides: Program["questionOverrides"] | undefined;
-};
-
-export function resolveLandingPageBySlugs(
+/**
+ * Resolves an account by its slug
+ * Used for landing page routing: /{accountSlug}
+ */
+export function resolveAccountBySlug(
   config: Config,
-  schoolSlug: string,
-  programSlug: string
-): ResolvedLandingPage | null {
-  const school = config.schools.find((item) => item.slug === schoolSlug);
-  if (!school) return null;
-
-  const program = config.programs.find(
-    (item) => item.slug === programSlug && item.schoolId === school.id
-  );
-  if (!program) return null;
-
-  const landingPage = config.landingPages.find(
-    (item) => item.schoolId === school.id && item.programId === program.id
-  );
-  if (!landingPage) return null;
-
-  const landingCopy = {
-    ...program.landingCopy,
-    ...landingPage.overrides?.landingCopy
-  };
-
-  const questionOverrides = landingPage.overrides?.questionOverrides ?? program.questionOverrides;
-
-  return { school, program, landingPage, landingCopy, questionOverrides };
+  accountSlug: string
+): Account | null {
+  return config.accounts.find((item) => item.slug === accountSlug) || null;
 }
 
+/**
+ * Gets all active programs for an account
+ */
+export function getProgramsByAccount(
+  config: Config,
+  accountId: string
+): Program[] {
+  return config.programs.filter(
+    (item) => item.accountId === accountId && item.isActive
+  );
+}
+
+/**
+ * Gets all active locations for an account
+ */
+export function getLocationsByAccount(
+  config: Config,
+  accountId: string
+): Location[] {
+  return config.locations.filter(
+    (item) => item.accountId === accountId && item.isActive
+  );
+}
+
+/**
+ * Resolves entities by IDs for submission processing
+ */
 export function resolveEntitiesByIds(
   config: Config,
-  schoolId: string,
-  campusId: string | null | undefined,
-  programId: string
+  accountId: string,
+  locationId: string | null | undefined,
+  programId: string | null | undefined
 ) {
-  const school = config.schools.find((item) => item.id === schoolId);
-  const program = config.programs.find(
-    (item) => item.id === programId && item.schoolId === schoolId
-  );
+  const account = config.accounts.find((item) => item.id === accountId);
 
-  if (!school || !program) {
+  if (!account) {
     return null;
   }
 
-  let campus: Campus | null = null;
-
-  if (campusId) {
-    campus =
-      config.campuses.find((item) => item.id === campusId && item.schoolId === schoolId) || null;
-
-    if (!campus) {
-      return null;
-    }
+  let location: Location | null = null;
+  if (locationId) {
+    location =
+      config.locations.find(
+        (item) => item.id === locationId && item.accountId === accountId
+      ) || null;
   }
 
-  return { school, campus, program };
+  let program: Program | null = null;
+  if (programId) {
+    program =
+      config.programs.find(
+        (item) => item.id === programId && item.accountId === accountId
+      ) || null;
+  }
+
+  return { account, location, program };
+}
+
+// ============================================================================
+// LEGACY SUPPORT (for backwards compatibility during refactor)
+// ============================================================================
+
+/** @deprecated Use resolveAccountBySlug instead */
+export function resolveLandingPageBySlugs(
+  config: Config,
+  accountSlug: string,
+  _programSlug?: string
+) {
+  const account = resolveAccountBySlug(config, accountSlug);
+  if (!account) return null;
+
+  // For backwards compatibility, return a structure similar to old ResolvedLandingPage
+  return {
+    school: account,
+    account,
+    programs: getProgramsByAccount(config, account.id),
+    locations: getLocationsByAccount(config, account.id)
+  };
 }

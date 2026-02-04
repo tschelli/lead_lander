@@ -6,7 +6,6 @@
     "dev": "concurrently -k \"npm:dev:landing\" \"npm:dev:admin\" \"npm:dev:api\" \"npm:dev:worker\"",
     "dev:landing": "npm --workspace apps/web-landing run dev",
     "dev:admin": "npm --workspace apps/web-admin run dev",
-    "dev:web": "echo 'DEPRECATED: Use dev:landing and dev:admin instead' && npm --workspace apps/web run dev",
     "dev:api": "npm --workspace apps/api run dev",
     "dev:worker": "npm --workspace apps/worker run dev",
     "build": "npm --workspace packages/config-schema run build && npm --workspace apps/api run build && npm --workspace apps/worker run build && npm --workspace apps/web-landing run build && npm --workspace apps/web-admin run build",
@@ -14,11 +13,9 @@
     "build:admin": "npm --workspace apps/web-admin run build",
     "test": "vitest run",
     "migrate": "tsx scripts/migrate.ts",
-    "seed:config": "tsx scripts/seed-config.ts",
+    "seed": "tsx scripts/seed-data.ts",
     "verify:migrations": "tsx scripts/verify-migrations.ts",
-    "check:slugs": "tsx scripts/check-duplicate-slugs.ts",
-    "summary": "tsx scripts/monthly-summary.ts",
-    "requeue": "tsx scripts/requeue-missing-crm.ts"
+    "summary": "tsx scripts/monthly-summary.ts"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",

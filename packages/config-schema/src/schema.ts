@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+// ============================================================================
+// COLOR & BRANDING SCHEMAS
+// ============================================================================
+
 export const ColorSchema = z.object({
   primary: z.string(),
   secondary: z.string(),
@@ -57,40 +61,69 @@ export const ThankYouSchema = z.object({
   ctaUrl: z.string().optional()
 });
 
-export const SchoolSchema = z.object({
+// ============================================================================
+// CLIENT SCHEMA
+// ============================================================================
+
+export const ClientSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1)
+});
+
+// ============================================================================
+// ACCOUNT SCHEMA (formerly School)
+// ============================================================================
+
+export const AccountSchema = z.object({
   id: z.string().min(1),
   clientId: z.string().min(1),
   slug: z.string().min(1),
   name: z.string().min(1),
   branding: BrandingSchema,
   compliance: ComplianceSchema,
-  crmConnectionId: z.string().min(1),
+  crmConnectionId: z.string().min(1).optional(),
   footerContent: FooterContentSchema.optional(),
-  thankYou: ThankYouSchema.optional()
+  thankYou: ThankYouSchema.optional(),
+  isActive: z.boolean().default(true)
 });
 
-export const CampusSchema = z.object({
+// ============================================================================
+// LOCATION SCHEMA (formerly Campus)
+// ============================================================================
+
+export const LocationSchema = z.object({
   id: z.string().min(1),
-  schoolId: z.string().min(1),
+  clientId: z.string().min(1),
+  accountId: z.string().min(1),
   slug: z.string().min(1),
   name: z.string().min(1),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
   routingTags: z.array(z.string()).default([]),
   notifications: z
     .object({
       enabled: z.boolean().default(false),
       recipients: z.array(z.string()).default([])
     })
-    .optional()
+    .optional(),
+  isActive: z.boolean().default(true)
 });
+
+// ============================================================================
+// PROGRAM SCHEMAS
+// ============================================================================
 
 export const LandingCopySchema = z.object({
   headline: z.string().min(1),
   subheadline: z.string().min(1),
   body: z.string().min(1),
-  ctaText: z.string().default("Get Program Info")
+  ctaText: z.string().default("Get Started")
 });
 
-// Enhanced landing page content schemas
 export const ProgramHighlightSchema = z.object({
   icon: z.string().optional(),
   text: z.string().min(1)
@@ -134,31 +167,10 @@ export const SectionsConfigSchema = z.object({
   })
 });
 
-export const QuestionOverrideSchema = z.object({
-  id: z.string().min(1),
-  hidden: z.boolean().optional(),
-  label: z.string().optional(),
-  options: z
-    .array(
-      z.object({
-        label: z.string(),
-        value: z.string()
-      })
-    )
-    .optional(),
-  required: z.boolean().optional(),
-  showIf: z
-    .object({
-      questionId: z.string(),
-      equals: z.union([z.string(), z.array(z.string())])
-    })
-    .optional()
-});
-
 export const LeadFormFieldSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
-  type: z.enum(["text", "email", "tel", "select", "radio", "checkbox", "textarea"]),
+  type: z.enum(["text", "email", "tel", "select", "radio", "checkbox", "textarea", "number", "zip"]),
   required: z.boolean().default(false),
   options: z
     .array(
@@ -168,7 +180,7 @@ export const LeadFormFieldSchema = z.object({
       })
     )
     .optional(),
-  mapTo: z.enum(["answers", "campus_id"]).default("answers"),
+  mapTo: z.enum(["answers", "location_id"]).default("answers"),
   placeholder: z.string().optional()
 });
 
@@ -179,22 +191,16 @@ export const LeadFormConfigSchema = z.object({
 
 export const ProgramSchema = z.object({
   id: z.string().min(1),
-  schoolId: z.string().min(1),
+  clientId: z.string().min(1),
+  accountId: z.string().min(1),
   slug: z.string().min(1),
   name: z.string().min(1),
-  availableCampuses: z.array(z.string()).optional(),
-  landingCopy: LandingCopySchema,
-  questionOverrides: z.array(QuestionOverrideSchema).optional(),
+  description: z.string().optional(),
+  landingCopy: LandingCopySchema.optional(),
   leadForm: LeadFormConfigSchema.optional(),
-  // Enhanced landing page fields
-  templateType: z.enum(["minimal", "full"]).default("full"),
   heroImage: z.string().optional(),
   heroBackgroundColor: z.string().optional(),
   heroBackgroundImage: z.string().optional(),
-  duration: z.string().optional(),
-  salaryRange: z.string().optional(),
-  placementRate: z.string().optional(),
-  graduationRate: z.string().optional(),
   highlights: z.array(ProgramHighlightSchema).default([]),
   testimonials: z.array(ProgramTestimonialSchema).default([]),
   faqs: z.array(ProgramFAQSchema).default([]),
@@ -210,40 +216,31 @@ export const ProgramSchema = z.object({
       faqs: true
     }
   }),
-  // Quiz routing
-  useQuizRouting: z.boolean().default(false)
+  displayOrder: z.number().int().default(0),
+  isActive: z.boolean().default(true)
 });
 
-export const LandingPageSchema = z.object({
-  id: z.string().min(1),
-  schoolId: z.string().min(1),
-  programId: z.string().min(1),
-  campusId: z.string().min(1).optional(),
-  overrides: z
-    .object({
-      landingCopy: LandingCopySchema.optional(),
-      questionOverrides: z.array(QuestionOverrideSchema).optional()
-    })
-    .optional(),
-  notifications: z
-    .object({
-      enabled: z.boolean().default(false),
-      recipients: z.array(z.string()).default([])
-    })
-    .optional()
-});
+// ============================================================================
+// CRM CONNECTION SCHEMA
+// ============================================================================
 
 export const CrmConnectionSchema = z.object({
   id: z.string().min(1),
+  clientId: z.string().min(1),
+  accountId: z.string().min(1).optional(),
   type: z.enum(["webhook", "generic"]),
-  config: z.record(z.any()).optional()
+  config: z.record(z.any()).optional(),
+  isActive: z.boolean().default(true)
 });
 
-// Quiz Builder schemas
+// ============================================================================
+// QUIZ SCHEMAS
+// ============================================================================
+
 export const QuizQuestionSchema = z.object({
   id: z.string().min(1),
   clientId: z.string().min(1),
-  schoolId: z.string().optional(),
+  accountId: z.string().optional(),
   questionText: z.string().min(1),
   questionType: z.enum(["single_choice", "multiple_choice", "text"]).default("single_choice"),
   helpText: z.string().optional(),
@@ -266,24 +263,76 @@ export const QuizAnswerOptionSchema = z.object({
   pointAssignments: z.record(z.number()).default({}) // Maps program IDs to point values
 });
 
-export const ConfigSchema = z.object({
-  schools: z.array(SchoolSchema),
-  campuses: z.array(CampusSchema),
-  programs: z.array(ProgramSchema),
-  landingPages: z.array(LandingPageSchema),
-  crmConnections: z.array(CrmConnectionSchema),
-  quizQuestions: z.array(QuizQuestionSchema).default([]),
-  quizAnswerOptions: z.array(QuizAnswerOptionSchema).default([])
+// ============================================================================
+// LANDING PAGE QUESTION SCHEMAS
+// ============================================================================
+
+export const LandingPageQuestionSchema = z.object({
+  id: z.string().min(1),
+  accountId: z.string().min(1),
+  questionText: z.string().min(1),
+  questionType: z.enum(["text", "textarea", "select", "radio", "checkbox", "number", "tel", "email", "zip"]),
+  helpText: z.string().optional(),
+  displayOrder: z.number().int().default(0),
+  isRequired: z.boolean().default(false),
+  crmFieldName: z.string().optional(),
+  isActive: z.boolean().default(true)
 });
 
+export const LandingPageQuestionOptionSchema = z.object({
+  id: z.string().min(1),
+  questionId: z.string().min(1),
+  optionText: z.string().min(1),
+  optionValue: z.string().min(1),
+  displayOrder: z.number().int().default(0)
+});
+
+// ============================================================================
+// WEBHOOK SCHEMA
+// ============================================================================
+
+export const WebhookConfigSchema = z.object({
+  id: z.string().min(1),
+  accountId: z.string().min(1),
+  webhookUrl: z.string().url(),
+  events: z.array(z.enum(["submission_created", "quiz_started", "quiz_completed", "submission_updated"])).default([
+    "submission_created",
+    "quiz_completed"
+  ]),
+  headers: z.record(z.string()).default({}),
+  isActive: z.boolean().default(true)
+});
+
+// ============================================================================
+// ROOT CONFIG SCHEMA
+// ============================================================================
+
+export const ConfigSchema = z.object({
+  clients: z.array(ClientSchema).default([]),
+  accounts: z.array(AccountSchema).default([]),
+  locations: z.array(LocationSchema).default([]),
+  programs: z.array(ProgramSchema).default([]),
+  crmConnections: z.array(CrmConnectionSchema).default([]),
+  quizQuestions: z.array(QuizQuestionSchema).default([]),
+  quizAnswerOptions: z.array(QuizAnswerOptionSchema).default([]),
+  landingPageQuestions: z.array(LandingPageQuestionSchema).default([]),
+  landingPageQuestionOptions: z.array(LandingPageQuestionOptionSchema).default([]),
+  webhookConfigs: z.array(WebhookConfigSchema).default([])
+});
+
+// ============================================================================
+// TYPE EXPORTS
+// ============================================================================
+
 export type Config = z.infer<typeof ConfigSchema>;
-export type School = z.infer<typeof SchoolSchema>;
-export type Campus = z.infer<typeof CampusSchema>;
+export type Client = z.infer<typeof ClientSchema>;
+export type Account = z.infer<typeof AccountSchema>;
+export type Location = z.infer<typeof LocationSchema>;
 export type Program = z.infer<typeof ProgramSchema>;
-export type LandingPage = z.infer<typeof LandingPageSchema>;
 export type CrmConnection = z.infer<typeof CrmConnectionSchema>;
 
-// Enhanced landing page types
+// Program content types
+export type LandingCopy = z.infer<typeof LandingCopySchema>;
 export type ProgramHighlight = z.infer<typeof ProgramHighlightSchema>;
 export type ProgramTestimonial = z.infer<typeof ProgramTestimonialSchema>;
 export type ProgramFAQ = z.infer<typeof ProgramFAQSchema>;
@@ -292,8 +341,35 @@ export type SectionsConfig = z.infer<typeof SectionsConfigSchema>;
 export type LeadFormField = z.infer<typeof LeadFormFieldSchema>;
 export type LeadFormConfig = z.infer<typeof LeadFormConfigSchema>;
 
-// Quiz builder types
+// Quiz types
 export type QuizQuestion = z.infer<typeof QuizQuestionSchema>;
 export type QuizAnswerOption = z.infer<typeof QuizAnswerOptionSchema>;
+
+// Landing page question types
+export type LandingPageQuestion = z.infer<typeof LandingPageQuestionSchema>;
+export type LandingPageQuestionOption = z.infer<typeof LandingPageQuestionOptionSchema>;
+
+// Webhook types
+export type WebhookConfig = z.infer<typeof WebhookConfigSchema>;
+
+// Branding types
+export type Color = z.infer<typeof ColorSchema>;
+export type Branding = z.infer<typeof BrandingSchema>;
+export type Compliance = z.infer<typeof ComplianceSchema>;
 export type FooterContent = z.infer<typeof FooterContentSchema>;
 export type ThankYou = z.infer<typeof ThankYouSchema>;
+
+// ============================================================================
+// LEGACY TYPE ALIASES (for backwards compatibility during refactor)
+// ============================================================================
+// These can be removed once all code is updated
+
+/** @deprecated Use Account instead */
+export type School = Account;
+/** @deprecated Use AccountSchema instead */
+export const SchoolSchema = AccountSchema;
+
+/** @deprecated Use Location instead */
+export type Campus = Location;
+/** @deprecated Use LocationSchema instead */
+export const CampusSchema = LocationSchema;
