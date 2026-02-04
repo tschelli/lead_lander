@@ -1,102 +1,91 @@
-import { SCHOOL_ID, API_BASE_URL } from "../lib/schoolContext";
+import { API_BASE_URL } from "../lib/apiConfig";
+import type { Account } from "@lead_lander/config-schema";
 
 export const dynamic = "force-dynamic";
 
-type SchoolResponse = {
-  school: {
-    id: string;
-    name: string;
-    slug: string;
-    branding?: {
-      logoUrl?: string;
-      colors?: {
-        primary?: string;
-        secondary?: string;
-      };
-    };
-  };
-};
-
-type ProgramsResponse = {
-  programs: Array<{
-    id: string;
-    name: string;
-    slug: string;
-  }>;
+type AccountsResponse = {
+  accounts: Account[];
 };
 
 export default async function Home() {
-  const schoolResponse = await fetch(`${API_BASE_URL}/api/public/schools/${SCHOOL_ID}`, {
+  // For development: show list of accounts
+  // For production: typically redirect to a specific account or show branded home
+  const response = await fetch(`${API_BASE_URL}/api/public/accounts`, {
     cache: "no-store"
   });
 
-  if (!schoolResponse.ok) {
+  if (!response.ok) {
     return (
       <main>
         <div className="form-card">
-          <h2>School not found</h2>
-          <p>Configuration error. Please contact support.</p>
+          <h2>Service Unavailable</h2>
+          <p>Unable to load accounts. Please contact support.</p>
         </div>
       </main>
     );
   }
 
-  const schoolData = (await schoolResponse.json()) as SchoolResponse;
-
-  // Fetch programs for this school
-  const programsResponse = await fetch(`${API_BASE_URL}/api/public/schools/${SCHOOL_ID}/programs`, {
-    cache: "no-store"
-  });
-
-  let programs: ProgramsResponse["programs"] = [];
-  if (programsResponse.ok) {
-    const programsData = (await programsResponse.json()) as ProgramsResponse;
-    programs = programsData.programs || [];
-  }
-
-  const style = schoolData.school.branding?.colors
-    ? {
-        "--color-primary": schoolData.school.branding.colors.primary || "#0e7490",
-        "--color-secondary": schoolData.school.branding.colors.secondary || "#06b6d4"
-      }
-    : {};
+  const data = (await response.json()) as AccountsResponse;
+  const accounts = data.accounts || [];
 
   return (
-    <main style={style as React.CSSProperties}>
+    <main>
       <div className="container">
-        <div className="form-card">
-          {schoolData.school.branding?.logoUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={schoolData.school.branding.logoUrl}
-              alt={`${schoolData.school.name} logo`}
-              className="brand-logo"
-              style={{ marginBottom: "24px", maxWidth: "200px" }}
-            />
-          )}
-          <h1>Welcome to {schoolData.school.name}</h1>
-          <p>Select a program to learn more and get started:</p>
+        <div className="form-card" style={{ maxWidth: "600px", margin: "0 auto" }}>
+          <h1>Lead Lander</h1>
+          <p>Select an account to visit their landing page:</p>
 
-          {programs.length > 0 ? (
-            <div style={{ marginTop: "24px", display: "flex", flexDirection: "column", gap: "12px" }}>
-              {programs.map((program) => (
+          {accounts.length > 0 ? (
+            <div style={{ marginTop: "32px", display: "flex", flexDirection: "column", gap: "12px" }}>
+              {accounts.map((account) => (
                 <a
-                  key={program.id}
-                  href={`/${program.slug}`}
+                  key={account.id}
+                  href={`/${account.slug}`}
                   className="program-link"
+                  style={{
+                    display: "block",
+                    padding: "16px",
+                    border: "1px solid #ddd",
+                    borderRadius: "8px",
+                    textDecoration: "none",
+                    color: "inherit",
+                    transition: "all 0.2s"
+                  }}
                 >
-                  <strong>{program.name}</strong>
+                  <strong>{account.name}</strong>
                   <p style={{ fontSize: "14px", color: "#666", margin: "4px 0 0 0" }}>
-                    /{program.slug}
+                    /{account.slug}
                   </p>
                 </a>
               ))}
             </div>
           ) : (
-            <p style={{ marginTop: "16px", color: "#666" }}>
-              No programs configured yet.
+            <p style={{ marginTop: "24px", color: "#666" }}>
+              No accounts configured yet. Run <code>npm run seed</code> to create sample accounts.
             </p>
           )}
+
+          <div
+            style={{
+              marginTop: "32px",
+              padding: "16px",
+              background: "#f0f9ff",
+              borderRadius: "8px",
+              fontSize: "14px"
+            }}
+          >
+            <p style={{ margin: 0, fontWeight: "bold", color: "#0369a1" }}>
+              💡 Development Mode
+            </p>
+            <p style={{ margin: "8px 0 0 0", color: "#075985" }}>
+              This page shows all accounts for testing. In production, you would typically:
+            </p>
+            <ul style={{ margin: "8px 0 0 16px", color: "#075985" }}>
+              <li>Direct traffic to specific account URLs</li>
+              <li>Use custom domains per account</li>
+              <li>Or redirect the root to a branded landing page</li>
+            </ul>
+          </div>
         </div>
       </div>
     </main>

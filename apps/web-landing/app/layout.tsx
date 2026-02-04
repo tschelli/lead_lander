@@ -5,8 +5,8 @@ const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-display" });
 const plex = IBM_Plex_Sans({ subsets: ["latin"], weight: ["300", "400", "500", "600"], variable: "--font-body" });
 
 export const metadata = {
-  title: "Lead Lander - School Landing Pages",
-  description: "Educational program landing pages"
+  title: "Lead Lander - Account Landing Pages",
+  description: "Multi-tenant landing pages with quiz-based program recommendations"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

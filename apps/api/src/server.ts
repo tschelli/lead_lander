@@ -241,6 +241,56 @@ async function getSchoolById(id: string) {
   return result.rows[0] || null;
 }
 
+// ============================================================================
+// ACCOUNT HELPERS (new architecture)
+// ============================================================================
+
+async function getAccountBySlug(slug: string) {
+  const result = await pool.query(
+    `SELECT id, client_id, slug, name, branding, compliance, crm_connection_id, footer_content, thank_you, is_active
+     FROM accounts
+     WHERE slug = $1 AND is_active = true
+     LIMIT 1`,
+    [slug]
+  );
+  return result.rows[0] || null;
+}
+
+async function getAccountById(id: string) {
+  const result = await pool.query(
+    `SELECT id, client_id, slug, name, branding, compliance, crm_connection_id, footer_content, thank_you, is_active
+     FROM accounts
+     WHERE id = $1 AND is_active = true
+     LIMIT 1`,
+    [id]
+  );
+  return result.rows[0] || null;
+}
+
+async function getLocationsByAccountId(accountId: string) {
+  const result = await pool.query(
+    `SELECT id, client_id, account_id, slug, name, address, city, state, zip_code, latitude, longitude, routing_tags, notifications, is_active
+     FROM locations
+     WHERE account_id = $1 AND is_active = true
+     ORDER BY name`,
+    [accountId]
+  );
+  return result.rows;
+}
+
+async function getProgramsByAccountId(accountId: string) {
+  const result = await pool.query(
+    `SELECT id, client_id, account_id, slug, name, description, landing_copy, lead_form,
+            hero_image, hero_background_color, hero_background_image, highlights, testimonials,
+            faqs, stats, sections_config, display_order, is_active
+     FROM programs
+     WHERE account_id = $1 AND is_active = true
+     ORDER BY display_order, name`,
+    [accountId]
+  );
+  return result.rows;
+}
+
 async function attachAuthContext(req: express.Request, res: express.Response, next: express.NextFunction) {
   try {
     res.locals.auth = await loadAuthContext(req);
@@ -428,6 +478,30 @@ const SubmitSchema = z.object({
   honeypot: z.string().optional()
 });
 
+// Account-based schema (new architecture)
+const StartSchemaV2 = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  zipCode: z.string().optional(),
+  accountId: z.string().min(1),
+  locationId: z.string().min(1).nullable().optional(),
+  programId: z.string().min(1).nullable().optional(),
+  landingAnswers: z.record(z.any()).default({}),
+  metadata: z
+    .object({
+      utm: z.record(z.string()).optional(),
+      referrer: z.string().optional(),
+      userAgent: z.string().optional(),
+      source: z.string().optional()
+    })
+    .optional(),
+  consented: z.literal(true),
+  consentTextVersion: z.string()
+});
+
+// Legacy school-based schema (for backwards compatibility)
 const StartSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),
@@ -747,6 +821,139 @@ app.post("/api/auth/reset-password", async (req, res) => {
 app.get("/healthz", (_req, res) => {
   res.json({ status: "ok" });
 });
+
+// ============================================================================
+// NEW ACCOUNT-BASED PUBLIC API ROUTES
+// ============================================================================
+
+// List all active accounts
+app.get("/api/public/accounts", async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, slug, name, branding
+       FROM accounts
+       WHERE is_active = true
+       ORDER BY name`
+    );
+
+    return res.json({
+      accounts: result.rows.map((row) => ({
+        id: row.id,
+        slug: row.slug,
+        name: row.name,
+        branding: row.branding
+      }))
+    });
+  } catch (error) {
+    console.error("Public accounts list error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get account with locations and programs
+app.get("/api/public/accounts/:accountSlug", async (req, res) => {
+  try {
+    const account = await getAccountBySlug(req.params.accountSlug);
+    if (!account) {
+      return res.status(404).json({ error: "Account not found" });
+    }
+
+    const locations = await getLocationsByAccountId(account.id);
+    const programs = await getProgramsByAccountId(account.id);
+
+    return res.json({
+      account: {
+        id: account.id,
+        clientId: account.client_id,
+        slug: account.slug,
+        name: account.name,
+        branding: account.branding,
+        compliance: account.compliance,
+        footerContent: account.footer_content,
+        thankYou: account.thank_you,
+        isActive: account.is_active
+      },
+      locations: locations.map((loc: any) => ({
+        id: loc.id,
+        clientId: loc.client_id,
+        accountId: loc.account_id,
+        slug: loc.slug,
+        name: loc.name,
+        address: loc.address,
+        city: loc.city,
+        state: loc.state,
+        zipCode: loc.zip_code,
+        latitude: loc.latitude ? parseFloat(loc.latitude) : null,
+        longitude: loc.longitude ? parseFloat(loc.longitude) : null,
+        routingTags: loc.routing_tags,
+        notifications: loc.notifications,
+        isActive: loc.is_active
+      })),
+      programs: programs.map((prog: any) => ({
+        id: prog.id,
+        clientId: prog.client_id,
+        accountId: prog.account_id,
+        slug: prog.slug,
+        name: prog.name,
+        description: prog.description,
+        landingCopy: prog.landing_copy,
+        leadForm: prog.lead_form,
+        heroImage: prog.hero_image,
+        highlights: prog.highlights,
+        testimonials: prog.testimonials,
+        faqs: prog.faqs,
+        stats: prog.stats,
+        sectionsConfig: prog.sections_config,
+        displayOrder: prog.display_order,
+        isActive: prog.is_active
+      }))
+    });
+  } catch (error) {
+    console.error("Public account fetch error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Find nearest location by ZIP code
+app.get("/api/public/accounts/:accountSlug/nearest-location", async (req, res) => {
+  try {
+    const zipCode = req.query.zip as string;
+    if (!zipCode || zipCode.length < 5) {
+      return res.status(400).json({ error: "Valid ZIP code required" });
+    }
+
+    const account = await getAccountBySlug(req.params.accountSlug);
+    if (!account) {
+      return res.status(404).json({ error: "Account not found" });
+    }
+
+    // Import ZIP lookup utility
+    const { findNearestLocation } = await import("../../../scripts/zip-lookup");
+    const nearestLocation = await findNearestLocation(pool, account.id, zipCode);
+
+    if (!nearestLocation) {
+      return res.json({ location: null });
+    }
+
+    return res.json({
+      location: {
+        id: nearestLocation.id,
+        name: nearestLocation.name,
+        city: nearestLocation.city,
+        state: nearestLocation.state,
+        zipCode: nearestLocation.zipCode,
+        distance: nearestLocation.distance
+      }
+    });
+  } catch (error) {
+    console.error("Nearest location error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ============================================================================
+// LEGACY SCHOOL-BASED PUBLIC API ROUTES
+// ============================================================================
 
 app.get("/api/public/schools/:school", async (req, res) => {
   try {
@@ -5134,6 +5341,105 @@ app.post("/api/public/quiz/sessions/:sessionId/submit", async (req, res) => {
 
 app.post("/api/lead/start", async (req, res) => {
   try {
+    // Try new account-based schema first
+    const v2Result = StartSchemaV2.safeParse(req.body);
+    if (v2Result.success) {
+      // Handle account-based submission (new architecture)
+      const payload = v2Result.data;
+
+      const accountRecord = await getAccountById(payload.accountId);
+      if (!accountRecord) {
+        return res.status(404).json({ error: "Unknown account" });
+      }
+
+      const submissionId = uuidv4();
+      const idempotencyKey = computeIdempotencyKey({
+        clientId: accountRecord.client_id,
+        email: payload.email,
+        phone: payload.phone || "",
+        schoolId: payload.accountId, // Use accountId for backwards compat
+        campusId: payload.locationId || null,
+        programId: payload.programId || null
+      });
+
+      const now = new Date();
+      const metadata = buildMetadata(req, payload.metadata);
+
+      const insertResult = await pool.query(
+        `INSERT INTO submissions
+          (id, client_id, account_id, location_id, program_id, first_name, last_name, email, phone, zip_code,
+           landing_answers, metadata, status, idempotency_key, consented, consent_text_version, consent_timestamp,
+           source, created_at, updated_at)
+        VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $19)
+        ON CONFLICT (idempotency_key) DO NOTHING
+        RETURNING id, status`,
+        [
+          submissionId,
+          accountRecord.client_id,
+          payload.accountId,
+          payload.locationId || null,
+          payload.programId || null,
+          payload.firstName,
+          payload.lastName,
+          payload.email.toLowerCase(),
+          payload.phone || null,
+          payload.zipCode || null,
+          payload.landingAnswers,
+          metadata,
+          "pending",
+          idempotencyKey,
+          payload.consented,
+          payload.consentTextVersion,
+          now,
+          payload.metadata?.source || "landing_page"
+        ]
+      );
+
+      let finalSubmissionId = submissionId;
+      let wasInserted = true;
+
+      if (insertResult.rowCount === 0) {
+        wasInserted = false;
+        const existing = await pool.query(
+          "SELECT id, status FROM submissions WHERE idempotency_key = $1 AND client_id = $2",
+          [idempotencyKey, accountRecord.client_id]
+        );
+        if (existing.rows.length === 0) {
+          return res.status(500).json({ error: "Failed to persist submission" });
+        }
+        finalSubmissionId = existing.rows[0].id;
+        console.log(`[${finalSubmissionId}] Duplicate submission accepted`);
+      } else {
+        console.log(`[${submissionId}] Account-based submission received`);
+      }
+
+      if (wasInserted) {
+        await deliveryQueue.add(
+          "create_lead",
+          {
+            submissionId,
+            clientId: accountRecord.client_id,
+            accountId: payload.accountId
+          },
+          {
+            jobId: `create-${submissionId}`,
+            attempts: env.deliveryMaxAttempts,
+            backoff: {
+              type: "exponential",
+              delay: env.deliveryBackoffMs
+            },
+            removeOnComplete: true,
+            removeOnFail: false
+          }
+        );
+        console.log(`[${submissionId}] Create lead job queued`);
+      }
+
+      return res.status(202).json({ submissionId: finalSubmissionId, status: "received", idempotencyKey });
+    }
+
+    // Fall back to legacy school-based schema
     const parseResult = StartSchema.safeParse(req.body);
     if (!parseResult.success) {
       return res.status(400).json({ error: "Invalid payload", details: parseResult.error.format() });
