@@ -1,321 +1,285 @@
 # Lead Lander
 
-Multi-tenant landing pages + long-form lead form for trade schools. The flow is:
+Multi-tenant landing pages with ZIP code-based location matching and quiz-driven program recommendations.
 
-landing page → multi-step form → API submission → Postgres → queue → delivery worker → CRM webhook (plus optional email).
+## Overview
 
-## Repo structure
+Lead Lander is a lead generation platform that:
+- Provides **one landing page per account** (not per program)
+- Uses **ZIP code input** to find the nearest location
+- Captures lead information with consent
+- Recommends programs via a **quiz system**
+- Delivers leads to CRM via webhooks
+- Stores everything in **PostgreSQL** (database-first architecture)
 
-- `apps/web` – Next.js landing pages + multi-step form
-- `apps/api` – submit endpoint + health
-- `apps/worker` – delivery worker + CRM adapters + worker health
-- `packages/config-schema` – config schema + validation helpers
-- `configs/` – JSON/YAML configs (one sample school included)
-- `migrations/` – SQL migrations
-- `scripts/` – migration runner + monthly summary
-
-## Configuration
-
-Config is stored in `configs/*.yml` or `configs/*.json`.
-
-Key entities:
-
-- **School** – branding, compliance disclaimer/version, CRM connection reference
-- **Campus** – routing slug, tags, email notification defaults
-- **Program** – landing copy + optional question overrides (and optional `availableCampuses`)
-- **LandingPage** – ties school + program with optional overrides (no campus routing)
-- **CrmConnection** – currently supports `webhook` and `generic` (stub)
-
-To add a new landing page:
-
-1. Add or edit a file in `configs/`.
-2. Add a `school`, `campus`, and `program` entry if needed.
-3. Add a `landingPages` entry linking the school/program IDs.
-4. (Optional) Add `program.availableCampuses` to restrict campus choices; otherwise all school campuses are shown.
-5. Run `npm --workspace packages/config-schema run build` to validate.
-
-Routes look like:
+## Architecture
 
 ```
-/{school_slug}/{program_slug}
+Client (you)
+  └─ Accounts (your customers)
+      ├─ Locations (physical campuses/offices)
+      ├─ Programs (service offerings)
+      ├─ Quiz Questions (for recommendations)
+      └─ Single Landing Page (/{account-slug})
 ```
 
-Example from sample config:
+### Key Concepts
 
+- **Account**: Your customer (formerly "school"). Education-agnostic.
+- **Location**: Physical location with lat/lon for ZIP matching. Used for billing and lead routing.
+- **Program**: Service offering. Used internally for quiz scoring and recommendations.
+- **Landing Page**: One per account at `/{account-slug}`. Shows all programs via quiz.
+- **Database-First**: Configuration lives in the database, not config files.
+
+## Quick Start
+
+### Local Development (Docker Compose)
+
+```bash
+# Start all services
+docker-compose up -d
+
+# Seed test data (2 accounts, 6 locations, 8 programs)
+docker-compose exec api npm run seed
+
+# Visit landing pages
+open http://localhost:3000/tech-institute
+open http://localhost:3000/health-academy
+
+# View all accounts
+open http://localhost:3000
+
+# Admin dashboard
+open http://localhost:3001/admin
+
+# Email testing (Mailhog)
+open http://localhost:8025
+
+# Webhook testing (MockServer)
+open http://localhost:1080/mockserver/dashboard
 ```
-/northwood-tech/medical-assistant
-```
 
-Notes:
-- Campus is selected inside the Step 1 form (includes a "Not sure yet" option).
-- School logos can live in `apps/web/public/logos` and be referenced as `/logos/<file>.png` in config.
+See [DOCKER_GUIDE.md](./DOCKER_GUIDE.md) for detailed Docker instructions.
 
-## Local development
+### Manual Setup
 
-### Option A: Docker compose
-
-```
-docker compose up
-```
-
-This starts Postgres, Redis, API, worker, and web.
-
-### Option B: Run services locally
-
-1. Install deps:
-
-```
+```bash
+# Install dependencies
 npm install
-```
 
-2. Start Postgres + Redis (via Docker or local services).
-3. Run migrations:
+# Start Postgres and Redis
+docker-compose up postgres redis -d
 
-```
+# Run migrations
 npm run migrate
-```
 
-4. Start the stack:
+# Seed test data
+npm run seed
 
-```
+# Start services
 npm run dev
 ```
 
-## Submission + delivery flow
-
-1. Visit a landing page URL (example above).
-2. Step 1 submits to `POST /api/lead/start` (creates submission + queues CRM create).
-3. Each subsequent step submits to `POST /api/lead/step` (merges answers + queues CRM update).
-4. Worker delivers to CRM webhook defined in config.
-
-Webhook adapter payload includes:
-
-- `submissionId`
-- `schoolId`, `campusId`, `programId`
-- `contact` fields
-- `answers`
-- `metadata` (UTM/referrer/user agent)
-- `consent` details
-- `routingTags`
-
-## Admin dashboard (internal)
-
-Dashboard routes:
-- `/admin` – account chooser
-- `/admin/{school_slug}` – metrics + queue status + recent submissions
-- `/admin/{school_slug}/database` – read-only submissions table
-- `/admin/{school_slug}/config` – config builder draft UI
-
-Admin API endpoints (require an authenticated admin session cookie):
-- `GET /api/admin/:school/metrics`
-- `GET /api/admin/:school/submissions?limit=50&offset=0`
-
-## Email notifications
-
-Optional per campus/landing page. Enable with:
+## Repository Structure
 
 ```
-EMAIL_ENABLED=true
-SMTP_HOST=...
-SMTP_USER=...
-SMTP_PASS=...
+lead_lander/
+├── apps/
+│   ├── api/              Backend API (Express)
+│   ├── worker/           Background worker (CRM delivery)
+│   ├── web-landing/      Landing pages (Next.js)
+│   └── web-admin/        Admin dashboard (Next.js)
+├── packages/
+│   └── config-schema/    TypeScript types
+├── migrations/
+│   ├── schema_v2.sql     Fresh database schema
+│   └── legacy/           Old migrations (archived)
+├── scripts/
+│   ├── seed-data.ts      Seed sample accounts
+│   ├── zip-lookup.ts     ZIP code utilities
+│   └── migrate.ts        Migration runner
+├── configs/
+│   ├── README.md         Config documentation
+│   └── legacy/           Old YAML configs (archived)
+├── dev-tools/            Mailhog & MockServer config
+├── DOCKER_GUIDE.md       Docker Compose guide
+└── README.md             This file
 ```
 
-Recipients come from `campus.notifications` or `landingPages.notifications`.
+## User Flow
 
-## Health endpoints
+1. **Visit landing page**: `/{account-slug}`
+2. **Enter ZIP code**: System finds nearest location
+3. **Provide contact info**: Name, email, phone
+4. **Select location**: Choose from dropdown (nearest pre-selected)
+5. **Consent**: Check disclaimer checkbox
+6. **Start quiz**: Answer questions about interests
+7. **Get recommendation**: System recommends best program
+8. **Lead delivered**: Sent to CRM via webhook
 
-- API: `GET /healthz`
-- Worker: `GET /worker/healthz`
+## Database Schema (v2)
 
-## Monthly summary report
+Core tables:
+- `clients` - Your business entity
+- `accounts` - Your customers (formerly schools)
+- `locations` - Physical locations with lat/lon (formerly campuses)
+- `programs` - Service offerings for quiz scoring
+- `submissions` - Lead submissions with quiz responses
+- `quiz_questions` - Quiz questions
+- `quiz_answer_options` - Answer options with point assignments
+- `landing_page_questions` - Custom landing page questions (ZIP code, etc.)
+- `webhook_configs` - CRM webhook configurations
 
-Generate a monthly summary:
+See `migrations/schema_v2.sql` for complete schema.
 
+## Configuration
+
+### Database-First Approach
+
+Configuration is stored in the **database**, not config files. This allows:
+- Hot-reloading (no redeployment needed)
+- True multi-tenancy
+- Admin UI management (coming soon)
+
+### Adding New Accounts
+
+**Option 1: Seed Script** (Development)
+```bash
+# Edit scripts/seed-data.ts, then:
+npm run seed
 ```
-npm run summary -- --month=2026-01
+
+**Option 2: Direct SQL** (Production)
+```sql
+-- See configs/README.md for SQL examples
+INSERT INTO accounts (id, client_id, slug, name, ...) VALUES (...);
+INSERT INTO locations (id, account_id, ...) VALUES (...);
+INSERT INTO programs (id, account_id, ...) VALUES (...);
 ```
 
-Outputs counts by campus/program: received, delivered, failed.
+**Option 3: Admin UI** (Coming Soon)
+Manage accounts, locations, and programs via web interface.
 
-## Tests
+## API Endpoints
 
-```
+### Public (Landing Pages)
+- `GET /api/public/accounts` - List all accounts
+- `GET /api/public/accounts/:slug` - Get account with locations & programs
+- `GET /api/public/accounts/:slug/nearest-location?zip=XXXXX` - Find nearest location
+- `POST /api/lead/start` - Submit lead (with ZIP, location, consent)
+
+### Admin (Dashboard)
+- `GET /api/admin/schools` - List accounts (uses "schools" for backward compat)
+- `GET /api/admin/schools/:id/metrics` - Account metrics
+- `GET /api/admin/schools/:id/submissions` - List submissions
+
+### Health
+- `GET /healthz` - API health check
+- `GET /worker/healthz` - Worker health check
+
+## Development Tools
+
+### Mailhog (Email Testing)
+- **UI**: http://localhost:8025
+- **SMTP**: localhost:1025
+- Captures all outgoing emails for testing
+
+### MockServer (Webhook Testing)
+- **UI**: http://localhost:1080/mockserver/dashboard
+- **Endpoint**: http://localhost:1080/webhook/crm
+- Logs all webhook requests for debugging
+
+See `dev-tools/README.md` for details.
+
+## Testing
+
+```bash
+# Run all tests
 npm test
+
+# Test ZIP lookup utility
+npm run -- tsx scripts/zip-lookup.ts tech-institute 98101
 ```
 
-Includes config validation and idempotency unit tests.
+## Deployment
 
-## Environment variables
+### Vercel (Frontend)
+```bash
+# Deploy landing pages
+cd apps/web-landing
+vercel
 
-See `.env.example` for defaults. `CONFIG_DIR` is resolved from each app's working directory (default `../../configs`). Secrets (CRM webhook token, SMTP creds) should be provided via env vars.
+# Deploy admin dashboard
+cd apps/web-admin
+vercel
+```
 
-### Admin dashboard env vars (web)
+**Environment Variables:**
+- `NEXT_PUBLIC_API_BASE_URL` - API URL (CloudFront or ALB)
 
-- `ADMIN_API_BASE_URL` (web): Base URL for API requests (e.g. CloudFront domain).
-- `ADMIN_API_PROXY_TARGET` (web): Proxy target for `/api/*` rewrites (use CloudFront when you do not own a domain).
+### AWS (Backend)
+1. **RDS PostgreSQL** - Database
+2. **ElastiCache Redis** - Queue
+3. **ECS Fargate** - API + Worker containers
+4. **CloudFront** - HTTPS for API
+5. **ECR** - Container images
 
-### Admin auth cookie env vars (api)
+See deployment section in the original README or create `docs/DEPLOYMENT.md`.
 
-- `AUTH_COOKIE_DOMAIN` (api): Optional cookie domain (e.g. `.example.com`).
-- `AUTH_COOKIE_SAMESITE` (api): `lax` (default), `strict`, or `none`. Use `none` only if you must allow cross-site cookies.
+## Migration from v1 (School-Based)
 
-## Deployment (AWS + Vercel)
+### Key Changes
 
-This repo is designed for:
-- **Vercel** for the Next.js frontend (`apps/web`)
-- **AWS ECS Fargate** for the API + Worker
-- **AWS RDS Postgres** for storage
-- **AWS ElastiCache Redis** for the queue
-- **CloudFront** in front of the API (HTTPS)
-- **ECR + CodeBuild** for container builds
+| Old (v1) | New (v2) |
+|----------|----------|
+| `schools` | `accounts` |
+| `campuses` | `locations` |
+| Config files (YAML) | Database |
+| `/{school}/{program}` | `/{account}` |
+| Per-school deployment | Multi-tenant |
+| Program-specific pages | Single page + quiz |
 
-Below is a detailed step-by-step that mirrors the current production setup.
+### Backward Compatibility
 
-### 1) Vercel (frontend)
+The API supports both old and new submission formats:
+- Old: `schoolId`, `campusId`, `programId`
+- New: `accountId`, `locationId`, `programId` (optional)
 
-1. **Import project** in Vercel from GitHub.
-2. **Root directory**: repo root.
-3. **Framework**: Next.js.
-4. **Build command** (default is ok):  
-   `cd ../.. && npm --workspace apps/web run build`
-5. **Output**: Vercel auto-detects Next.js.
-6. **Environment variables** (Project → Settings → Environment Variables):
-   - `NEXT_PUBLIC_API_BASE_URL` = `https://<cloudfront-domain>`
-   - `ADMIN_API_BASE_URL` = `https://<cloudfront-domain>` (for admin dashboard)
+The worker handles both formats automatically.
 
-After a push, Vercel auto-deploys the web app.
+### Data Migration
 
-### 2) AWS Core Infrastructure
+1. Export data from old schema
+2. Apply `schema_v2.sql`
+3. Transform and import:
+   - `schools` → `accounts`
+   - `campuses` → `locations` (add lat/lon)
+   - Keep `programs` (update `account_id`)
+4. Run seed script for quiz questions
 
-#### VPC + Networking
-- Create a VPC with **public** and **private** subnets.
-- Public subnets for ALB.
-- Private subnets for ECS tasks, RDS, Redis.
-- Security groups:
-  - **alb-sg**: inbound 80/443 from internet
-  - **api-sg**: inbound 4000 from alb-sg
-  - **worker-sg**: no inbound
-  - **rds-sg**: inbound 5432 from api-sg + worker-sg
-  - **redis-sg**: inbound 6379 from api-sg + worker-sg
+## Environment Variables
 
-#### RDS Postgres
-- Create Postgres instance in private subnets.
-- Enforce SSL (use `sslmode=require` in `DATABASE_URL`).
+See `.env.example` for all variables.
 
-#### ElastiCache Redis
-- Create Redis cluster in private subnets.
-- Use TLS endpoint (rediss://) if required by your cluster.
+**Removed in v2:**
+- `NEXT_PUBLIC_SCHOOL_ID` ❌
+- `NEXT_PUBLIC_CLIENT_ID` ❌
 
-### 3) ECS (API + Worker)
+**Why removed?** The application is now truly multi-tenant. One deployment serves all accounts.
 
-#### Task definitions
-Create two task definitions (Fargate):
-- **API task**: container port 4000  
-  CMD: `node apps/api/dist/server.js`
-- **Worker task**: container port 5005  
-  CMD: `node apps/worker/dist/worker.js`
+## Contributing
 
-Environment variables for both:
-- `DATABASE_URL` (RDS)
-- `REDIS_URL` (ElastiCache)
-- `CONFIG_DIR=/app/configs`
-- `DELIVERY_QUEUE_NAME=lead_delivery`
-- `DELIVERY_MAX_ATTEMPTS=5`
-- `DELIVERY_BACKOFF_MS=10000`
-- `CRM_WEBHOOK_TOKEN=...`
-- `EMAIL_ENABLED=false` (optional)
+1. Create a branch from `main`
+2. Make changes
+3. Test locally with Docker Compose
+4. Create pull request
 
-API-only:
-- `PORT=4000`
-- `RATE_LIMIT_MAX=30`
-- `RATE_LIMIT_WINDOW_MS=60000`
-- `TRUST_PROXY=1` (set to `2` for CloudFront → ALB → ECS)
+## License
 
-Worker-only:
-- `WORKER_PORT=5005`
-- SMTP vars if email notifications are enabled
+Proprietary
 
-#### Services
-Create ECS services:
-- **API service** with an ALB target group (health check `/healthz`)
-- **Worker service** (no load balancer)
+## Support
 
-### 4) CloudFront (API HTTPS)
-
-Create a CloudFront distribution pointing to the ALB:
-- **Origin**: ALB DNS name
-- **Behavior**: `/api/*`
-  - Allowed methods: GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE
-  - Cache policy: `CachingDisabled`
-  - Origin request policy: `Managed-AllViewer` (required to forward cookies/headers)
-  - Response headers policy: `Managed-CORS-With-Preflight`
-
-If you update behaviors, invalidate `/api/*`.
-
-### 5) ECR + CodeBuild
-
-#### ECR
-Create two repos:
-- `lead-lender-api`
-- `lead-lender-worker`
-
-#### CodeBuild
-Configure CodeBuild to:
-- Build and push the API and Worker images.
-- Use `buildspec.yml` at the repo root.
-- Push images to ECR with a tag (commit SHA or build ID).
-
-### 6) Migrations
-
-Run migrations after every schema change:
-
-**ECS one-off task (recommended):**
-- Use the API task definition
-- Command override (comma delimited):
-  ```
-  npm,run,migrate
-  ```
-
-In logs you should see:
-- `Applying 00X_*.sql`
-- `Migrations complete.`
-
-### 7) Deploy flow (typical)
-
-1. Push to GitHub.
-2. CodeBuild builds/pushes new images to ECR.
-3. Update **API** and **Worker** ECS task definitions to the new image tags.
-4. Update ECS services to the new revisions.
-5. Run migrations (if needed).
-6. Vercel auto-deploys the web frontend.
-
-### 8) Verification checklist
-
-**API**
-- `GET /healthz` returns ok
-- `/api/lead/start` returns 202
-- `/api/lead/step` returns 202
-
-**Worker**
-- `GET /worker/healthz` returns ok
-- CloudWatch logs show `create_lead` + `update_lead` success
-
-**DB**
-- Submissions created for Step 1
-- `crm_lead_id` populated after create
-- `answers` JSON merged across steps
-
-**CloudFront**
-- Preflight OPTIONS works for `/api/*`
-- No CORS errors in the browser
-
-**Admin dashboard**
-- `/admin/<school_slug>` renders metrics
-- `/admin/<school_slug>/database` shows submissions
-- `/admin/<school_slug>/config` shows config builder
-- API returns 200 with `x-admin-key`
-
----
-
-For deeper infra templates, see `infra/ecs/` and `docs/aws-deploy.md`.
+- GitHub Issues: https://github.com/your-org/lead-lander/issues
+- Docs: See `/docs` directory
+- Docker Guide: `DOCKER_GUIDE.md`
