@@ -16,14 +16,26 @@ void deliveryQueue;
 type SubmissionRow = {
   id: string;
   client_id: string;
-  school_id: string;
-  campus_id: string | null;
-  program_id: string;
+  // New account-based fields
+  account_id?: string;
+  location_id?: string | null;
+  program_id?: string | null;
+  landing_answers?: Record<string, unknown>;
+  quiz_answers?: Record<string, unknown>;
+  zip_code?: string | null;
+  recommended_program_id?: string | null;
+  source?: string;
+  // Legacy school-based fields
+  school_id?: string;
+  campus_id?: string | null;
+  answers?: Record<string, unknown>;
+  last_step_completed?: number | null;
+  created_from_step?: number | null;
+  // Common fields
   first_name: string;
   last_name: string;
   email: string;
   phone: string | null;
-  answers: Record<string, unknown>;
   metadata: Record<string, unknown>;
   status: string;
   consented: boolean;
@@ -31,14 +43,15 @@ type SubmissionRow = {
   consent_timestamp: string;
   idempotency_key: string;
   crm_lead_id: string | null;
-  last_step_completed: number | null;
-  created_from_step: number | null;
 };
 
 type DeliveryJobData = {
   submissionId: string;
   clientId: string;
-  schoolId: string;
+  // New account-based
+  accountId?: string;
+  // Legacy school-based
+  schoolId?: string;
   stepIndex?: number;
 };
 
@@ -70,16 +83,25 @@ async function updateSubmissionStatus(clientId: string, submissionId: string, st
 function buildEmailBody(payload: DeliveryPayload) {
   const lines = [
     `Submission ID: ${payload.submissionId}`,
-    `School ID: ${payload.schoolId}`,
-    `Campus ID: ${payload.campusId}`,
-    `Program ID: ${payload.programId}`,
-    "",
-    `Name: ${payload.contact.firstName} ${payload.contact.lastName}`,
-    `Email: ${payload.contact.email}`,
-    `Phone: ${payload.contact.phone ?? ""}`,
-    "",
-    "Answers:"
   ];
+
+  // Add account-based or school-based identifiers
+  if (payload.accountId) {
+    lines.push(`Account ID: ${payload.accountId}`);
+    lines.push(`Location ID: ${payload.locationId || "Not specified"}`);
+    lines.push(`Program ID: ${payload.programId || "Not specified"}`);
+  } else {
+    lines.push(`School ID: ${payload.schoolId}`);
+    lines.push(`Campus ID: ${payload.campusId || "Not specified"}`);
+    lines.push(`Program ID: ${payload.programId}`);
+  }
+
+  lines.push("");
+  lines.push(`Name: ${payload.contact.firstName} ${payload.contact.lastName}`);
+  lines.push(`Email: ${payload.contact.email}`);
+  lines.push(`Phone: ${payload.contact.phone ?? ""}`);
+  lines.push("");
+  lines.push("Answers:");
 
   for (const [key, value] of Object.entries(payload.answers)) {
     lines.push(`- ${key}: ${JSON.stringify(value)}`);
@@ -93,7 +115,8 @@ const worker = new Worker(
   async (job) => {
     const submissionId = job.data.submissionId as string;
     const clientId = job.data.clientId as string;
-    const schoolId = job.data.schoolId as string;
+    const accountId = job.data.accountId as string | undefined;
+    const schoolId = job.data.schoolId as string | undefined;
     const jobType = job.name;
     const action = jobType === "create_lead" ? "create" : "update";
     const stepIndex = jobType === "create_lead"
@@ -106,7 +129,7 @@ const worker = new Worker(
       throw new Error(`Unsupported job type: ${jobType}`);
     }
 
-    if (!submissionId || !clientId || !schoolId) {
+    if (!submissionId || !clientId || (!accountId && !schoolId)) {
       throw new Error("Missing job payload context");
     }
 
@@ -133,7 +156,18 @@ const worker = new Worker(
       throw new Error("Job client_id mismatch - potential security issue");
     }
 
-    if (submission.school_id !== schoolId) {
+    // Check if this is account-based or school-based submission
+    const isAccountBased = !!submission.account_id;
+
+    if (isAccountBased && accountId && submission.account_id !== accountId) {
+      await logAudit(clientId, submissionId, "job_payload_mismatch", {
+        expectedAccountId: submission.account_id,
+        jobAccountId: accountId
+      });
+      throw new Error("Job account_id mismatch");
+    }
+
+    if (!isAccountBased && schoolId && submission.school_id !== schoolId) {
       await logAudit(clientId, submissionId, "job_payload_mismatch", {
         expectedSchoolId: submission.school_id,
         jobSchoolId: schoolId
@@ -174,30 +208,100 @@ const worker = new Worker(
     );
 
     try {
-      const config = await getConfigForClient(clientId);
-      const entities = resolveEntitiesByIds(
-        config,
-        submission.school_id,
-        submission.campus_id,
-        submission.program_id
-      );
+      let crmConnectionConfig: { type: string; config?: Record<string, unknown> };
+      let routingTags: string[] = [];
+      let notificationRecipients: string[] = [];
+      let payloadData: {
+        schoolId?: string;
+        campusId?: string | null;
+        accountId?: string;
+        locationId?: string | null;
+        programId?: string | null;
+      };
 
-      if (!entities) {
-        await updateSubmissionStatus(clientId, submissionId, "failed");
-        await logAudit(clientId, submissionId, "failed", { reason: "Missing config entities" });
-        console.error(`[${submissionId}] Missing config entities`);
-        throw new Error("Missing config entities");
-      }
+      if (isAccountBased) {
+        // Handle account-based submission (new architecture)
+        const accountResult = await pool.query(
+          "SELECT id, name, crm_connection_id FROM accounts WHERE id = $1",
+          [submission.account_id]
+        );
 
-      const crmConnection = config.crmConnections.find(
-        (connection) => connection.id === entities.school.crmConnectionId
-      );
+        if (accountResult.rows.length === 0) {
+          throw new Error("Account not found");
+        }
 
-      if (!crmConnection) {
-        await updateSubmissionStatus(clientId, submissionId, "failed");
-        await logAudit(clientId, submissionId, "failed", { reason: "Missing CRM connection" });
-        console.error(`[${submissionId}] Missing CRM connection`);
-        throw new Error("Missing CRM connection");
+        const account = accountResult.rows[0];
+
+        // Get CRM connection
+        const crmResult = await pool.query(
+          "SELECT type, config FROM crm_connections WHERE id = $1",
+          [account.crm_connection_id]
+        );
+
+        if (crmResult.rows.length === 0) {
+          await updateSubmissionStatus(clientId, submissionId, "failed");
+          await logAudit(clientId, submissionId, "failed", { reason: "Missing CRM connection" });
+          throw new Error("Missing CRM connection");
+        }
+
+        crmConnectionConfig = crmResult.rows[0];
+
+        // Get location routing tags if location is specified
+        if (submission.location_id) {
+          const locationResult = await pool.query(
+            "SELECT routing_tags, notifications FROM locations WHERE id = $1",
+            [submission.location_id]
+          );
+
+          if (locationResult.rows.length > 0) {
+            routingTags = locationResult.rows[0].routing_tags || [];
+            const notifications = locationResult.rows[0].notifications;
+            if (notifications?.enabled) {
+              notificationRecipients = notifications.recipients || [];
+            }
+          }
+        }
+
+        payloadData = {
+          accountId: submission.account_id,
+          locationId: submission.location_id || null,
+          programId: submission.program_id || null
+        };
+      } else {
+        // Handle legacy school-based submission
+        const config = await getConfigForClient(clientId);
+        const entities = resolveEntitiesByIds(
+          config,
+          submission.school_id!,
+          submission.campus_id || null,
+          submission.program_id!
+        );
+
+        if (!entities) {
+          await updateSubmissionStatus(clientId, submissionId, "failed");
+          await logAudit(clientId, submissionId, "failed", { reason: "Missing config entities" });
+          console.error(`[${submissionId}] Missing config entities`);
+          throw new Error("Missing config entities");
+        }
+
+        const crmConnection = config.crmConnections.find(
+          (connection) => connection.id === entities.school.crmConnectionId
+        );
+
+        if (!crmConnection) {
+          await updateSubmissionStatus(clientId, submissionId, "failed");
+          await logAudit(clientId, submissionId, "failed", { reason: "Missing CRM connection" });
+          throw new Error("Missing CRM connection");
+        }
+
+        crmConnectionConfig = crmConnection;
+        routingTags = entities.campus?.routingTags || [];
+
+        payloadData = {
+          schoolId: submission.school_id,
+          campusId: submission.campus_id,
+          programId: submission.program_id
+        };
       }
 
       if (jobType === "update_lead" && !submission.crm_lead_id) {
@@ -211,31 +315,36 @@ const worker = new Worker(
         action,
         crmLeadId: submission.crm_lead_id,
         stepIndex: stepIndex || null,
-        schoolId: submission.school_id,
-        campusId: submission.campus_id,
-        programId: submission.program_id,
+        ...payloadData,
         contact: {
           firstName: submission.first_name,
           lastName: submission.last_name,
           email: submission.email,
           phone: submission.phone
         },
-        answers: submission.answers || {},
-        metadata: submission.metadata || {},
+        answers: isAccountBased
+          ? { ...submission.landing_answers, ...submission.quiz_answers }
+          : (submission.answers || {}),
+        metadata: {
+          ...submission.metadata,
+          zipCode: submission.zip_code,
+          source: submission.source,
+          recommendedProgramId: submission.recommended_program_id
+        },
         consent: {
           consented: submission.consented,
           textVersion: submission.consent_text_version,
           timestamp: submission.consent_timestamp
         },
-        routingTags: entities.campus?.routingTags || []
+        routingTags
       };
 
       let result: AdapterResult;
 
-      if (crmConnection.type === "webhook") {
-        result = await webhookAdapter(payload, crmConnection.config || {});
+      if (crmConnectionConfig.type === "webhook") {
+        result = await webhookAdapter(payload, crmConnectionConfig.config || {});
       } else {
-        result = await genericAdapter(payload, crmConnection.config || {});
+        result = await genericAdapter(payload, crmConnectionConfig.config || {});
       }
 
       if (jobType === "create_lead" && result.success && !result.crmLeadId) {
@@ -285,17 +394,13 @@ const worker = new Worker(
       await logAudit(clientId, submissionId, "delivered", { statusCode: result.statusCode });
       console.log(`[${submissionId}] Delivery succeeded`);
 
-      const landingPage = config.landingPages.find(
-        (item) => item.schoolId === submission.school_id && item.programId === submission.program_id
-      );
-
-      const notifications = landingPage?.notifications || entities.campus?.notifications;
-
-      if (notifications?.enabled) {
-        const campusName = entities.campus?.name || "Unspecified campus";
-        const subject = `New lead: ${entities.program.name} (${campusName})`;
+      // Send email notifications if enabled
+      if (notificationRecipients.length > 0) {
+        const subject = isAccountBased
+          ? `New lead: ${submission.account_id}`
+          : `New lead from submission ${submissionId}`;
         const body = buildEmailBody(payload);
-        await sendNotificationEmail(notifications.recipients, subject, body);
+        await sendNotificationEmail(notificationRecipients, subject, body);
       }
 
       return { delivered: true };

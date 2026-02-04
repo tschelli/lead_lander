@@ -4,9 +4,14 @@ export type DeliveryPayload = {
   action: "create" | "update";
   crmLeadId?: string | null;
   stepIndex?: number | null;
-  schoolId: string;
-  campusId: string | null;
-  programId: string;
+  // Account-based fields (new architecture)
+  accountId?: string;
+  locationId?: string | null;
+  // School-based fields (legacy)
+  schoolId?: string;
+  campusId?: string | null;
+  // Common fields
+  programId?: string | null;
   contact: {
     firstName: string;
     lastName: string;
