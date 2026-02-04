@@ -1,6 +1,10 @@
 version: "3.9"
 
 services:
+  # ============================================================================
+  # DATABASE & CACHE
+  # ============================================================================
+
   postgres:
     image: postgres:16
     environment:
@@ -11,60 +15,164 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./migrations:/migrations
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lead_lander"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # BACKEND SERVICES
+  # ============================================================================
 
   api:
     image: node:20
     working_dir: /app
     volumes:
       - ./:/app
+      - /app/node_modules
     command: sh -c "npm install && npm run migrate && npm run dev:api"
     environment:
+      NODE_ENV: development
       DATABASE_URL: postgres://lead_lander:lead_lander@postgres:5432/lead_lander
       REDIS_URL: redis://redis:6379
-      CONFIG_DIR: ../../configs
+      CONFIG_DIR: /app/configs
+      PORT: 4000
       DELIVERY_MAX_ATTEMPTS: 5
+      DELIVERY_BACKOFF_MS: 10000
+      DELIVERY_QUEUE_NAME: lead_delivery
+      RATE_LIMIT_MAX: 30
+      RATE_LIMIT_WINDOW_MS: 60000
+      TRUST_PROXY: 0
+      CRM_WEBHOOK_TOKEN: local-dev-token
+      # Admin auth settings
+      AUTH_COOKIE_SAMESITE: lax
     ports:
       - "4000:4000"
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:4000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   worker:
     image: node:20
     working_dir: /app
     volumes:
       - ./:/app
+      - /app/node_modules
     command: sh -c "npm install && npm run dev:worker"
     environment:
+      NODE_ENV: development
       DATABASE_URL: postgres://lead_lander:lead_lander@postgres:5432/lead_lander
       REDIS_URL: redis://redis:6379
-      CONFIG_DIR: ../../configs
-      DELIVERY_MAX_ATTEMPTS: 5
+      CONFIG_DIR: /app/configs
       WORKER_PORT: 5005
-      CRM_WEBHOOK_TOKEN: change-me
+      DELIVERY_MAX_ATTEMPTS: 5
+      DELIVERY_BACKOFF_MS: 10000
+      DELIVERY_QUEUE_NAME: lead_delivery
+      CRM_WEBHOOK_TOKEN: local-dev-token
+      # Email settings (via Mailhog)
+      EMAIL_ENABLED: true
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      SMTP_FROM: noreply@lead-lander.local
     ports:
       - "5005:5005"
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5005/worker/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  web:
+  # ============================================================================
+  # FRONTEND SERVICES
+  # ============================================================================
+
+  web-landing:
     image: node:20
     working_dir: /app
     volumes:
       - ./:/app
-    command: sh -c "npm install && npm run dev:web"
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev:landing"
     environment:
+      NODE_ENV: development
       NEXT_PUBLIC_API_BASE_URL: http://localhost:4000
+      PORT: 3000
     ports:
       - "3000:3000"
     depends_on:
       - api
 
+  web-admin:
+    image: node:20
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev:admin"
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:4000
+      ADMIN_API_BASE_URL: http://localhost:4000
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      - api
+
+  # ============================================================================
+  # DEVELOPMENT TOOLS
+  # ============================================================================
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"  # SMTP server
+      - "8025:8025"  # Web UI
+    environment:
+      MH_STORAGE: memory
+
+  webhook-mock:
+    image: mockserver/mockserver:latest
+    ports:
+      - "1080:1080"  # Mock server UI and API
+    environment:
+      MOCKSERVER_PROPERTY_FILE: /config/mockserver.properties
+      MOCKSERVER_INITIALIZATION_JSON_PATH: /config/initializerJson.json
+      MOCKSERVER_LOG_LEVEL: INFO
+    volumes:
+      - ./dev-tools/webhook-mock:/config
+
 volumes:
   pgdata:
+
+networks:
+  default:
+    name: lead_lander_network

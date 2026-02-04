@@ -1,0 +1,29 @@
+[
+  {
+    "httpRequest": {
+      "method": "POST",
+      "path": "/webhook/crm"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "body": {
+        "success": true,
+        "leadId": "mock-lead-${json-unit.matches:id}",
+        "message": "Lead received successfully"
+      },
+      "headers": {
+        "Content-Type": ["application/json"]
+      }
+    }
+  },
+  {
+    "httpRequest": {
+      "method": "GET",
+      "path": "/mockserver/dashboard"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "body": "MockServer is running. Check http://localhost:1080/mockserver/dashboard for the UI."
+    }
+  }
+]
