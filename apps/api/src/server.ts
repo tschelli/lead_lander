@@ -220,10 +220,11 @@ async function loadAuthContext(req: express.Request): Promise<AuthContext | null
 }
 
 async function getSchoolBySlug(slug: string) {
+  // Legacy function - now queries accounts table for compatibility
   const result = await pool.query(
     `SELECT id, client_id, slug, name, branding, compliance, crm_connection_id, thank_you
-     FROM schools
-     WHERE slug = $1
+     FROM accounts
+     WHERE slug = $1 AND is_active = true
      LIMIT 1`,
     [slug]
   );
@@ -231,10 +232,11 @@ async function getSchoolBySlug(slug: string) {
 }
 
 async function getSchoolById(id: string) {
+  // Legacy function - now queries accounts table for compatibility
   const result = await pool.query(
     `SELECT id, client_id, slug, name, branding, compliance, crm_connection_id, thank_you
-     FROM schools
-     WHERE id = $1
+     FROM accounts
+     WHERE id = $1 AND is_active = true
      LIMIT 1`,
     [id]
   );
@@ -947,6 +949,152 @@ app.get("/api/public/accounts/:accountSlug/nearest-location", async (req, res) =
     });
   } catch (error) {
     console.error("Nearest location error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Get quiz questions for an account
+app.get("/api/public/accounts/:accountSlug/quiz", async (req, res) => {
+  try {
+    const account = await getAccountBySlug(req.params.accountSlug);
+    if (!account) {
+      return res.status(404).json({ error: "Account not found" });
+    }
+
+    // Fetch quiz questions for this account
+    const questionsResult = await pool.query(
+      `SELECT id, account_id, question_text, question_type, help_text, display_order, conditional_on, is_active
+       FROM quiz_questions
+       WHERE account_id = $1 AND is_active = true
+       ORDER BY display_order`,
+      [account.id]
+    );
+
+    // Fetch answer options for each question
+    const questions = await Promise.all(
+      questionsResult.rows.map(async (q) => {
+        const optionsResult = await pool.query(
+          `SELECT id, option_text, display_order
+           FROM quiz_answer_options
+           WHERE question_id = $1
+           ORDER BY display_order`,
+          [q.id]
+        );
+
+        return {
+          id: q.id,
+          questionText: q.question_text,
+          questionType: q.question_type,
+          helpText: q.help_text,
+          displayOrder: q.display_order,
+          conditionalOn: q.conditional_on,
+          options: optionsResult.rows.map((opt) => ({
+            id: opt.id,
+            optionText: opt.option_text,
+            displayOrder: opt.display_order
+            // Note: point_assignments are NOT sent to client for security
+          }))
+        };
+      })
+    );
+
+    return res.json({ questions });
+  } catch (error) {
+    console.error("Public quiz fetch error", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Calculate program recommendation based on quiz answers
+app.post("/api/public/accounts/:accountSlug/quiz/recommend", async (req, res) => {
+  try {
+    const account = await getAccountBySlug(req.params.accountSlug);
+    if (!account) {
+      return res.status(404).json({ error: "Account not found" });
+    }
+
+    const { submissionId, answers } = req.body;
+
+    if (!answers || typeof answers !== "object") {
+      return res.status(400).json({ error: "Invalid answers format" });
+    }
+
+    // Get all programs for this account
+    const programs = await getProgramsByAccountId(account.id);
+
+    // Initialize scores for each program
+    const programScores: Record<string, number> = {};
+    programs.forEach((p) => {
+      programScores[p.id] = 0;
+    });
+
+    // Calculate scores based on answers
+    for (const [questionId, answer] of Object.entries(answers)) {
+      const answerArray = Array.isArray(answer) ? answer : [answer];
+
+      for (const optionId of answerArray) {
+        // Fetch the option with point assignments
+        const optionResult = await pool.query(
+          `SELECT point_assignments
+           FROM quiz_answer_options
+           WHERE id = $1`,
+          [optionId]
+        );
+
+        if (optionResult.rows.length > 0) {
+          const pointAssignments = optionResult.rows[0].point_assignments || {};
+
+          // Add points to relevant programs
+          for (const [programId, points] of Object.entries(pointAssignments)) {
+            if (programScores[programId] !== undefined) {
+              programScores[programId] += Number(points);
+            }
+          }
+        }
+      }
+    }
+
+    // Find recommended program (highest score)
+    let recommendedProgram = null;
+    let maxScore = 0;
+
+    for (const [programId, score] of Object.entries(programScores)) {
+      if (score > maxScore) {
+        maxScore = score;
+        const program = programs.find((p) => p.id === programId);
+        if (program) {
+          recommendedProgram = {
+            id: program.id,
+            name: program.name,
+            slug: program.slug,
+            description: program.description,
+            score: maxScore
+          };
+        }
+      }
+    }
+
+    // Update submission with quiz answers and recommended program
+    if (submissionId) {
+      try {
+        await pool.query(
+          `UPDATE submissions
+           SET quiz_answers = $1, recommended_program_id = $2, updated_at = NOW()
+           WHERE id = $3`,
+          [JSON.stringify(answers), recommendedProgram?.id || null, submissionId]
+        );
+      } catch (updateError) {
+        console.error("Failed to update submission with quiz results", updateError);
+        // Continue even if update fails - don't break user experience
+      }
+    }
+
+    return res.json({
+      recommendedProgram,
+      scores: programScores
+    });
+  } catch (error) {
+    console.error("Quiz recommendation error", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -5371,7 +5519,7 @@ app.post("/api/lead/start", async (req, res) => {
            landing_answers, metadata, status, idempotency_key, consented, consent_text_version, consent_timestamp,
            source, created_at, updated_at)
         VALUES
-          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $19)
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())
         ON CONFLICT (idempotency_key) DO NOTHING
         RETURNING id, status`,
         [

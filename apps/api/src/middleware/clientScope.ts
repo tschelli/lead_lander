@@ -36,14 +36,14 @@ export async function requireSchoolAccess(
     if (isSuper) {
       const result = await pool.query(
         `SELECT id, client_id, slug, name
-         FROM schools
+         FROM accounts
          WHERE id = $1 OR slug = $1
          LIMIT 1`,
         [schoolId]
       );
       const school = result.rows[0];
       if (!school) {
-        res.status(404).json({ error: "School not found" });
+        res.status(404).json({ error: "Account not found" });
         return;
       }
       res.locals.school = school;
@@ -60,7 +60,7 @@ export async function requireSchoolAccess(
     // Support both school ID and slug for flexibility.
     const result = await pool.query(
       `SELECT id, client_id, slug, name
-       FROM schools
+       FROM accounts
        WHERE client_id = $2 AND (id = $1 OR slug = $1)
        LIMIT 1`,
       [schoolId, auth.user.clientId]
@@ -69,7 +69,7 @@ export async function requireSchoolAccess(
     const school = result.rows[0];
 
     if (!school) {
-      res.status(404).json({ error: "School not found" });
+      res.status(404).json({ error: "Account not found" });
       return;
     }
 

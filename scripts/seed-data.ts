@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import * as bcrypt from "bcryptjs";
 
 const databaseUrl = process.env.DATABASE_URL || "postgres://lead_lander:lead_lander@localhost:5432/lead_lander";
 
@@ -70,7 +71,7 @@ async function seed() {
 
     await pool.query(`
       INSERT INTO crm_connections (id, client_id, type, config, is_active) VALUES
-      ('webhook-crm', 'demo-client', 'webhook', '{"url": "http://webhook-mock:1080/webhook/crm"}', true)
+      ('webhook-crm', 'demo-client', 'webhook', '{"endpoint": "http://webhook-mock:1080/webhook/crm", "authHeaderName": "Authorization", "authHeaderValue": "Bearer local-dev-token"}', true)
       ON CONFLICT (id) DO UPDATE SET config = EXCLUDED.config
     `);
 
@@ -210,6 +211,56 @@ async function seed() {
     `);
 
     // ========================================================================
+    // 10. ADMIN USERS
+    // ========================================================================
+    console.log("Creating admin users...");
+
+    // Hash password for test users (password: "admin123")
+    const passwordHash = await bcrypt.hash("admin123", 10);
+
+    const usersResult = await pool.query(`
+      INSERT INTO users (client_id, email, password_hash, email_verified, first_name, last_name, is_active) VALUES
+      ('demo-client', 'admin@demo.local', $1, true, 'Admin', 'User', true),
+      ('demo-client', 'tech@demo.local', $1, true, 'Tech', 'Admin', true),
+      ('demo-client', 'health@demo.local', $1, true, 'Health', 'Admin', true)
+      ON CONFLICT (client_id, LOWER(email)) WHERE is_active = true DO UPDATE SET password_hash = EXCLUDED.password_hash, email_verified = EXCLUDED.email_verified
+      RETURNING id, email
+    `, [passwordHash]);
+
+    // ========================================================================
+    // 11. USER ROLES
+    // ========================================================================
+    console.log("Creating user roles...");
+
+    const adminUser = usersResult.rows.find(u => u.email === 'admin@demo.local');
+    const techUser = usersResult.rows.find(u => u.email === 'tech@demo.local');
+    const healthUser = usersResult.rows.find(u => u.email === 'health@demo.local');
+
+    if (adminUser) {
+      await pool.query(`
+        INSERT INTO user_roles (user_id, client_id, account_id, role) VALUES
+        ($1, 'demo-client', NULL, 'client_admin')
+        ON CONFLICT DO NOTHING
+      `, [adminUser.id]);
+    }
+
+    if (techUser) {
+      await pool.query(`
+        INSERT INTO user_roles (user_id, client_id, account_id, role) VALUES
+        ($1, 'demo-client', 'tech-institute', 'account_admin')
+        ON CONFLICT DO NOTHING
+      `, [techUser.id]);
+    }
+
+    if (healthUser) {
+      await pool.query(`
+        INSERT INTO user_roles (user_id, client_id, account_id, role) VALUES
+        ($1, 'demo-client', 'health-academy', 'account_admin')
+        ON CONFLICT DO NOTHING
+      `, [healthUser.id]);
+    }
+
+    // ========================================================================
     // SUMMARY
     // ========================================================================
     console.log("\n✅ Seed data complete!\n");
@@ -222,6 +273,11 @@ async function seed() {
     console.log("  - 19 quiz answer options");
     console.log("  - 2 landing page questions");
     console.log("  - 2 webhook configs");
+    console.log("  - 3 admin users");
+    console.log("\n🔐 Admin Login Credentials:");
+    console.log("  - admin@demo.local / admin123 (client admin)");
+    console.log("  - tech@demo.local / admin123 (tech-institute admin)");
+    console.log("  - health@demo.local / admin123 (health-academy admin)");
     console.log("\n🌐 Test URLs:");
     console.log("  - http://localhost:3000/tech-institute");
     console.log("  - http://localhost:3000/health-academy");

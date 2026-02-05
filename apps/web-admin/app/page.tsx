@@ -51,7 +51,7 @@ export default async function AdminIndex() {
         <div className="admin-card">
           <h3>Dashboard guidance</h3>
           <p className="admin-muted">
-            These dashboards are scoped per account. Each account pulls metrics for its own campuses and
+            These dashboards are scoped per account. Each account pulls metrics for its own locations and
             programs only.
           </p>
         </div>

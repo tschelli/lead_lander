@@ -37,15 +37,21 @@ export function LoginForm({ schoolSlug, schoolName }: LoginFormProps) {
       });
 
       if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Login failed");
+        const errorData = await response.json().catch(() => ({ error: "Login failed" }));
+        throw new Error(errorData.error || "Login failed");
       }
 
+      const data = await response.json();
+      console.log("Login successful:", data);
+
+      // Use window.location for hard redirect to ensure cookie is picked up
       const next = searchParams.get("next");
-      router.replace(next || `/${schoolSlug}`);
+      const redirectUrl = next || `/${schoolSlug}`;
+      console.log("Redirecting to:", redirectUrl);
+      window.location.href = redirectUrl;
     } catch (err) {
+      console.error("Login error:", err);
       setError((err as Error).message || "Login failed");
-    } finally {
       setLoading(false);
     }
   };

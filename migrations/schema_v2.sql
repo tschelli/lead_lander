@@ -166,7 +166,7 @@ ALTER TABLE accounts
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS quiz_questions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   account_id TEXT REFERENCES accounts(id) ON DELETE CASCADE,
   question_text TEXT NOT NULL,
@@ -192,9 +192,9 @@ COMMENT ON COLUMN quiz_questions.conditional_on IS 'Show question conditionally:
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS quiz_answer_options (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-  question_id UUID NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
+  question_id TEXT NOT NULL REFERENCES quiz_questions(id) ON DELETE CASCADE,
   option_text TEXT NOT NULL,
   display_order INTEGER NOT NULL DEFAULT 0,
   point_assignments JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -212,7 +212,7 @@ COMMENT ON COLUMN quiz_answer_options.point_assignments IS 'Map of program_id ->
 -- Custom questions shown on account landing pages (before quiz)
 
 CREATE TABLE IF NOT EXISTS landing_page_questions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id TEXT PRIMARY KEY,
   account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   question_text TEXT NOT NULL,
   question_type TEXT NOT NULL CHECK (question_type IN ('text', 'textarea', 'select', 'radio', 'checkbox', 'number', 'tel', 'email', 'zip')),
@@ -234,8 +234,8 @@ COMMENT ON TABLE landing_page_questions IS 'Custom questions on landing pages (e
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS landing_page_question_options (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  question_id UUID NOT NULL REFERENCES landing_page_questions(id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY,
+  question_id TEXT NOT NULL REFERENCES landing_page_questions(id) ON DELETE CASCADE,
   option_text TEXT NOT NULL,
   option_value TEXT NOT NULL,
   display_order INTEGER NOT NULL DEFAULT 0,
@@ -317,9 +317,12 @@ COMMENT ON COLUMN submissions.recommended_program_id IS 'Final recommended progr
 
 CREATE TABLE IF NOT EXISTS delivery_attempts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   submission_id UUID NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
   attempt_number INTEGER NOT NULL,
   status TEXT NOT NULL,
+  job_type TEXT,
+  step_index INTEGER,
   response_code INTEGER,
   response_body TEXT,
   error TEXT,
@@ -327,6 +330,7 @@ CREATE TABLE IF NOT EXISTS delivery_attempts (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE INDEX idx_delivery_attempts_client ON delivery_attempts(client_id);
 CREATE INDEX idx_delivery_attempts_submission ON delivery_attempts(submission_id);
 CREATE INDEX idx_delivery_attempts_status ON delivery_attempts(status);
 
@@ -375,12 +379,14 @@ CREATE INDEX idx_webhook_logs_created ON webhook_logs(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   submission_id UUID REFERENCES submissions(id) ON DELETE CASCADE,
   event TEXT NOT NULL,
   payload JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE INDEX idx_audit_log_client ON audit_log(client_id);
 CREATE INDEX idx_audit_log_submission ON audit_log(submission_id);
 CREATE INDEX idx_audit_log_created ON audit_log(created_at DESC);
 
@@ -393,9 +399,11 @@ CREATE TABLE IF NOT EXISTS users (
   client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   password_hash TEXT NOT NULL,
+  email_verified BOOLEAN NOT NULL DEFAULT false,
   first_name TEXT,
   last_name TEXT,
   is_active BOOLEAN NOT NULL DEFAULT true,
+  last_login_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -404,7 +412,23 @@ CREATE UNIQUE INDEX idx_users_client_email ON users(client_id, LOWER(email)) WHE
 CREATE INDEX idx_users_client ON users(client_id);
 
 -- ============================================================================
--- 16. USER ROLES TABLE
+-- 16. PASSWORD RESET TOKENS TABLE
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+CREATE INDEX idx_password_reset_tokens_hash ON password_reset_tokens(token_hash) WHERE used_at IS NULL;
+
+-- ============================================================================
+-- 17. USER ROLES TABLE
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS user_roles (

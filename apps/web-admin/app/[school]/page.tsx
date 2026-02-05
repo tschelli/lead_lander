@@ -193,7 +193,7 @@ export default async function AdminAccount({ params }: { params: { school: strin
             </div>
           </div>
           <div className="admin-official__meta">
-            <span className="admin-pill">{campuses.length} campuses</span>
+            <span className="admin-pill">{campuses.length} locations</span>
             <span className="admin-pill">{programs.length} programs</span>
           </div>
           {metricsError && (
@@ -290,11 +290,11 @@ export default async function AdminAccount({ params }: { params: { school: strin
 
       <div className="admin-official__grid">
         <section className="admin-card">
-          <h3>Campus + program performance</h3>
+          <h3>Location + program performance</h3>
           <table className="admin-table">
             <thead>
               <tr>
-                <th>Campus</th>
+                <th>Location</th>
                 <th>Program</th>
                 <th>Leads</th>
                 <th>Delivered</th>
@@ -308,15 +308,15 @@ export default async function AdminAccount({ params }: { params: { school: strin
                 </tr>
               )}
               {performance.map((row) => {
-                const campusName = row.campusId
+                const locationName = row.campusId
                   ? campuses.find((campus) => campus.id === row.campusId)?.name || row.campusId
-                  : "Unspecified campus";
+                  : "Unspecified location";
                 const programName =
                   programs.find((program) => program.id === row.programId)?.name || row.programId;
 
                 return (
                   <tr key={`${row.campusId || "none"}-${row.programId}`}>
-                    <td>{campusName}</td>
+                    <td>{locationName}</td>
                     <td>{programName}</td>
                     <td>{row.leads.toLocaleString()}</td>
                     <td>{row.delivered.toLocaleString()}</td>

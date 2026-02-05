@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import type { Account, Location, Program } from "@lead_lander/config-schema";
-import { API_BASE_URL } from "../../lib/apiConfig";
+import { CLIENT_API_BASE_URL } from "../../lib/apiConfig";
+import { QuizComponent } from "./QuizComponent";
 
 type LandingPageClientProps = {
   account: Account;
@@ -33,6 +34,7 @@ export function LandingPageClient({
   const [consented, setConsented] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submissionId, setSubmissionId] = useState<string>("");
 
   const style = {
     "--color-primary": account.branding.colors.primary,
@@ -53,7 +55,7 @@ export function LandingPageClient({
 
     try {
       const response = await fetch(
-        `${API_BASE_URL}/api/public/accounts/${account.slug}/nearest-location?zip=${zipCode}`
+        `${CLIENT_API_BASE_URL}/api/public/accounts/${account.slug}/nearest-location?zip=${zipCode}`
       );
 
       if (!response.ok) {
@@ -90,7 +92,7 @@ export function LandingPageClient({
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/lead/start`, {
+      const response = await fetch(`${CLIENT_API_BASE_URL}/api/lead/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -120,6 +122,7 @@ export function LandingPageClient({
 
       // Store submission ID for quiz
       if (data.submissionId) {
+        setSubmissionId(data.submissionId);
         localStorage.setItem("lead_submission_id", data.submissionId);
       }
 
@@ -349,40 +352,32 @@ export function LandingPageClient({
 
   // Quiz step: Show program quiz
   if (step === "quiz") {
+    const handleQuizComplete = () => {
+      // Quiz completed - show thank you or redirect
+      // For now, just log it
+      console.log("Quiz completed");
+    };
+
     return (
       <main style={style}>
         <div className="container">
-          <div className="form-card" style={{ maxWidth: "600px", margin: "0 auto", textAlign: "center" }}>
-            <h2>✅ Thank you!</h2>
-            <p>Let's find your perfect program.</p>
-            <p style={{ marginTop: "24px" }}>
-              We have {programs.length} program{programs.length !== 1 ? "s" : ""} to recommend based on your interests.
-            </p>
-
-            {account.thankYou && (
-              <div style={{ marginTop: "32px", padding: "24px", background: "#f9f9f9", borderRadius: "8px" }}>
-                {account.thankYou.title && <h3>{account.thankYou.title}</h3>}
-                {account.thankYou.message && <p>{account.thankYou.message}</p>}
-                {account.thankYou.body && (
-                  <p style={{ fontSize: "14px", color: "#666" }}>{account.thankYou.body}</p>
-                )}
-                {account.thankYou.ctaUrl && account.thankYou.ctaText && (
-                  <a
-                    href={account.thankYou.ctaUrl}
-                    className="cta-button"
-                    style={{ display: "inline-block", marginTop: "16px" }}
-                  >
-                    {account.thankYou.ctaText}
-                  </a>
-                )}
-              </div>
+          <section className="brand-card" style={{ marginBottom: "24px" }}>
+            {account.branding.logoUrl && (
+              <img
+                src={account.branding.logoUrl}
+                alt={`${account.name} logo`}
+                className="brand-logo"
+                style={{ maxWidth: "200px", marginBottom: "16px" }}
+              />
             )}
+          </section>
 
-            {/* TODO: Implement quiz component */}
-            <p style={{ marginTop: "32px", fontSize: "14px", color: "#666" }}>
-              Quiz component coming soon. For now, a representative will contact you shortly.
-            </p>
-          </div>
+          <QuizComponent
+            account={account}
+            programs={programs}
+            submissionId={submissionId}
+            onComplete={handleQuizComplete}
+          />
         </div>
       </main>
     );

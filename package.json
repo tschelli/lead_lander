@@ -17,7 +17,11 @@
     "verify:migrations": "tsx scripts/verify-migrations.ts",
     "summary": "tsx scripts/monthly-summary.ts"
   },
+  "dependencies": {
+    "bcryptjs": "^2.4.3"
+  },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20.11.30",
     "concurrently": "^9.0.1",
     "tsx": "^4.7.1",
